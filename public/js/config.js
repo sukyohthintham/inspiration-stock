@@ -8,7 +8,6 @@ const SUPABASE_CONFIG = {
   ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFobnZ4Z2ZtZHF1cXZncnd1dWZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNTM1OTUsImV4cCI6MjA5NDkyOTU5NX0.qCU3DRK-eAjxU9-Nts6Bxh6yFt4lNS1zyJtNNojeixk',
 };
 
-// App-wide constants
 const APP = {
   NAME: 'Inspiration Stock',
   COMPANY: 'อินสไปเรชั่น ดีไซน์',
@@ -16,12 +15,16 @@ const APP = {
   CURRENCY: 'บาท',
 };
 
-// Initialize Supabase client (ต้อง load supabase-js ก่อน)
-const supabase = window.supabase.createClient(SUPABASE_CONFIG.URL, SUPABASE_CONFIG.ANON_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
-});
+// Initialize Supabase client
+// Override library namespace window.supabase with the actual client instance
+// so the rest of the app can keep using the bare 'supabase' identifier.
+(function initSupabase() {
+  const { createClient } = window.supabase;
+  window.supabase = createClient(SUPABASE_CONFIG.URL, SUPABASE_CONFIG.ANON_KEY, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+  });
+})();
 
-// Helper: Get current user profile (cached)
 let _currentProfile = null;
 async function getCurrentProfile(force = false) {
   if (_currentProfile && !force) return _currentProfile;
@@ -32,25 +35,17 @@ async function getCurrentProfile(force = false) {
     .select('*')
     .eq('id', user.id)
     .single();
-  if (error) {
-    console.error('Profile load error:', error);
-    return null;
-  }
+  if (error) { console.error('Profile load error:', error); return null; }
   _currentProfile = { ...data, email: user.email };
   return _currentProfile;
 }
 
-// Helper: Require login (redirect to login page if not authenticated)
 async function requireAuth() {
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session) {
-    window.location.href = 'index.html';
-    return null;
-  }
+  if (!session) { window.location.href = 'index.html'; return null; }
   return await getCurrentProfile();
 }
 
-// Helper: Require admin/manager role
 async function requireAdmin() {
   const profile = await requireAuth();
   if (!profile) return null;
@@ -62,20 +57,17 @@ async function requireAdmin() {
   return profile;
 }
 
-// Helper: Logout
 async function logout() {
   await supabase.auth.signOut();
   _currentProfile = null;
   window.location.href = 'index.html';
 }
 
-// Helper: Format currency
 function fmtCurrency(n) {
   if (n == null) return '-';
   return Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// Helper: Format datetime
 function fmtDate(d) {
   if (!d) return '-';
   return new Date(d).toLocaleString('th-TH', {
@@ -91,8 +83,7 @@ function fmtDateOnly(d) {
   });
 }
 
-// Helper: Toast notification
-function toast(message, type = 'info') {
+function toast(message, type) {
   const colors = {
     info:    'bg-blue-600',
     success: 'bg-green-600',
@@ -100,24 +91,20 @@ function toast(message, type = 'info') {
     warning: 'bg-amber-600',
   };
   const el = document.createElement('div');
-  el.className = `fixed bottom-6 left-1/2 -translate-x-1/2 ${colors[type]} text-white px-5 py-3 rounded-full shadow-2xl z-50 text-sm font-medium animate-fade-in`;
+  el.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 ' + (colors[type || 'info']) + ' text-white px-5 py-3 rounded-full shadow-2xl z-50 text-sm font-medium';
   el.textContent = message;
   document.body.appendChild(el);
-  setTimeout(() => {
+  setTimeout(function(){
     el.style.transition = 'opacity 0.3s';
     el.style.opacity = '0';
-    setTimeout(() => el.remove(), 300);
+    setTimeout(function(){ el.remove(); }, 300);
   }, 2800);
 }
 
-// Helper: Confirm dialog
-function confirmDialog(message) {
-  return window.confirm(message);
-}
+function confirmDialog(message) { return window.confirm(message); }
 
-// Register service worker (PWA)
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW failed:', err));
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js').catch(function(err){ console.warn('SW failed:', err); });
   });
 }
