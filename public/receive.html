@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>รับสินค้าเข้า · Inspiration Stock</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style> body { font-family: 'Prompt', sans-serif; background: #f8fafc; } </style>
+</head>
+<body class="min-h-screen pb-10">
+  <main class="max-w-6xl mx-auto px-4 py-6">
+    <h1 class="text-2xl font-bold text-slate-900 mb-1">รับสินค้าเข้าคลัง 📥</h1>
+    <p class="text-sm text-slate-500 mb-6">บันทึกการรับเข้าจาก Supplier ระบบจะอัปเดตสต๊อกและต้นทุนเฉลี่ยให้อัตโนมัติ</p>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <!-- Form -->
+      <div class="bg-white rounded-2xl p-5 shadow-sm lg:col-span-2">
+        <h3 class="font-semibold text-slate-900 mb-3">สร้างใบรับใหม่</h3>
+
+        <div class="grid grid-cols-2 gap-3 mb-4">
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Supplier</label>
+            <select id="supplierSel" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm">
+              <option value="">- เลือก -</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">PO Reference (ไม่บังคับ)</label>
+            <input id="poRef" type="text" placeholder="PO-2026-001" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm">
+          </div>
+        </div>
+
+        <!-- Add item row -->
+        <div class="border border-dashed rounded-xl p-3 mb-3 bg-slate-50">
+          <div class="grid grid-cols-12 gap-2">
+            <div class="col-span-6 md:col-span-7">
+              <label class="block text-[10px] font-medium text-slate-600 mb-1">สินค้า</label>
+              <select id="prodSel" class="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm">
+                <option value="">- ค้นหา/เลือกสินค้า -</option>
+              </select>
+            </div>
+            <div class="col-span-3 md:col-span-2">
+              <label class="block text-[10px] font-medium text-slate-600 mb-1">จำนวน</label>
+              <input id="qtyInput" type="number" min="0" step="0.01" placeholder="0" class="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm">
+            </div>
+            <div class="col-span-3 md:col-span-2">
+              <label class="block text-[10px] font-medium text-slate-600 mb-1">ราคา/หน่วย</label>
+              <input id="costInput" type="number" min="0" step="0.01" placeholder="0.00" class="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm">
+            </div>
+            <div class="col-span-12 md:col-span-1 flex items-end">
+              <button id="addLineBtn" class="w-full px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">+ เพิ่ม</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Lines -->
+        <div class="border rounded-xl overflow-hidden">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50 text-xs text-slate-600">
+              <tr>
+                <th class="text-left p-2">สินค้า</th>
+                <th class="text-center p-2 w-20">จำนวน</th>
+                <th class="text-center p-2 w-24">ราคา</th>
+                <th class="text-right p-2 w-24">รวม</th>
+                <th class="w-10"></th>
+              </tr>
+            </thead>
+            <tbody id="linesBody" class="divide-y"></tbody>
+            <tfoot class="bg-slate-50 font-semibold text-sm">
+              <tr>
+                <td class="text-right p-2" colspan="3">รวมทั้งสิ้น</td>
+                <td class="text-right p-2" id="grandTotal">0.00</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <textarea id="rcvNotes" placeholder="หมายเหตุ (ถ้ามี)..." rows="2"
+          class="w-full mt-4 px-3 py-2 border border-slate-200 rounded-lg text-sm"></textarea>
+
+        <button id="saveRcvBtn" class="w-full mt-4 bg-gradient-to-r from-green-600 to-green-700 text-white font-semibold py-3 rounded-xl shadow-lg disabled:opacity-50">
+          💾 บันทึกการรับเข้า
+        </button>
+      </div>
+
+      <!-- Recent Receivings -->
+      <div class="bg-white rounded-2xl p-5 shadow-sm">
+        <h3 class="font-semibold text-slate-900 mb-3">รับเข้าล่าสุด</h3>
+        <div id="recentList" class="space-y-2 max-h-[500px] overflow-y-auto"></div>
+      </div>
+    </div>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/sidebar.js"></script>
+  <script>
+  let me = null;
+  let allProducts = [];
+  let lines = []; // [{ product_id, name, sku, unit, qty, cost }]
+
+  (async () => {
+    me = await setupAdminLayout('receive');
+    if (!me) return;
+    await Promise.all([loadSuppliers(), loadProducts(), loadRecent()]);
+  })();
+
+  async function loadSuppliers() {
+    const { data } = await supabase.from('suppliers').select('id, name, code').eq('is_active', true).order('name');
+    document.getElementById('supplierSel').innerHTML =
+      '<option value="">- เลือก -</option>' +
+      (data || []).map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+  }
+
+  async function loadProducts() {
+    const { data } = await supabase.from('products').select('id, sku, name, unit, unit_cost').eq('is_active', true).order('name');
+    allProducts = data || [];
+    document.getElementById('prodSel').innerHTML =
+      '<option value="">- ค้นหา/เลือกสินค้า -</option>' +
+      allProducts.map(p => `<option value="${p.id}">${p.sku} · ${p.name}</option>`).join('');
+  }
+
+  async function loadRecent() {
+    const { data } = await supabase
+      .from('receivings')
+      .select('id, receive_no, received_at, total_amount, suppliers(name), receiving_items(quantity, products(name, sku))')
+      .order('received_at', { ascending: false })
+      .limit(20);
+    const el = document.getElementById('recentList');
+    if (!data || data.length === 0) {
+      el.innerHTML = '<p class="text-sm text-slate-500 text-center py-4">ยังไม่มีรายการ</p>';
+      return;
+    }
+    el.innerHTML = data.map(r => `
+      <div class="p-3 rounded-lg border border-slate-200">
+        <div class="flex justify-between items-start">
+          <div class="font-mono text-sm font-semibold">${r.receive_no}</div>
+          <div class="text-xs text-slate-500">${fmtDateOnly(r.received_at)}</div>
+        </div>
+        <div class="text-xs text-slate-600 mt-1">${r.suppliers?.name || '-'}</div>
+        <div class="text-xs text-slate-500 mt-1">${(r.receiving_items||[]).length} รายการ · ${fmtCurrency(r.total_amount)} ฿</div>
+      </div>`).join('');
+  }
+
+  document.getElementById('prodSel').addEventListener('change', (e) => {
+    const id = Number(e.target.value);
+    const p = allProducts.find(x => x.id === id);
+    if (p) document.getElementById('costInput').value = Number(p.unit_cost || 0).toFixed(2);
+  });
+
+  document.getElementById('addLineBtn').addEventListener('click', () => {
+    const id = Number(document.getElementById('prodSel').value);
+    const qty = Number(document.getElementById('qtyInput').value);
+    const cost = Number(document.getElementById('costInput').value || 0);
+    if (!id || qty <= 0) { toast('ระบุสินค้าและจำนวน', 'warning'); return; }
+    const p = allProducts.find(x => x.id === id);
+    if (!p) return;
+    // ถ้ามีของชิ้นเดิมในไลน์อยู่แล้ว เพิ่มจำนวน
+    const existing = lines.find(l => l.product_id === id);
+    if (existing) existing.qty += qty;
+    else lines.push({ product_id: id, name: p.name, sku: p.sku, unit: p.unit, qty, cost });
+    document.getElementById('prodSel').value = '';
+    document.getElementById('qtyInput').value = '';
+    document.getElementById('costInput').value = '';
+    renderLines();
+  });
+
+  function renderLines() {
+    const tb = document.getElementById('linesBody');
+    if (lines.length === 0) {
+      tb.innerHTML = '<tr><td colspan="5" class="text-center text-slate-400 p-4">ยังไม่มีรายการ</td></tr>';
+      document.getElementById('grandTotal').textContent = '0.00';
+      return;
+    }
+    let total = 0;
+    tb.innerHTML = lines.map((l, idx) => {
+      const subtotal = l.qty * l.cost;
+      total += subtotal;
+      return `
+        <tr>
+          <td class="p-2">
+            <div class="font-medium text-sm">${l.name}</div>
+            <div class="text-[11px] text-slate-500">${l.sku} · ${l.unit}</div>
+          </td>
+          <td class="text-center p-2">${l.qty}</td>
+          <td class="text-center p-2">${fmtCurrency(l.cost)}</td>
+          <td class="text-right p-2 font-medium">${fmtCurrency(subtotal)}</td>
+          <td class="p-2"><button onclick="removeLine(${idx})" class="text-red-500 hover:text-red-700 text-sm">✕</button></td>
+        </tr>`;
+    }).join('');
+    document.getElementById('grandTotal').textContent = fmtCurrency(total);
+  }
+
+  function removeLine(idx) { lines.splice(idx, 1); renderLines(); }
+  window.removeLine = removeLine;
+
+  document.getElementById('saveRcvBtn').addEventListener('click', async () => {
+    if (lines.length === 0) { toast('ยังไม่มีรายการสินค้า', 'warning'); return; }
+    const supplierId = Number(document.getElementById('supplierSel').value) || null;
+    if (!supplierId) { toast('กรุณาเลือก Supplier', 'warning'); return; }
+    if (!confirmDialog(`ยืนยันการรับเข้า ${lines.length} รายการ?`)) return;
+
+    const btn = document.getElementById('saveRcvBtn');
+    btn.disabled = true; btn.textContent = 'กำลังบันทึก...';
+
+    try {
+      const totalAmount = lines.reduce((s, l) => s + l.qty * l.cost, 0);
+      // 1) Create receiving header
+      const { data: rcv, error: rcvErr } = await supabase.from('receivings').insert({
+        supplier_id: supplierId,
+        po_reference: document.getElementById('poRef').value.trim() || null,
+        received_by: me.id,
+        total_amount: totalAmount,
+        notes: document.getElementById('rcvNotes').value.trim() || null,
+      }).select().single();
+      if (rcvErr) throw rcvErr;
+
+      // 2) Insert items + call receive_stock RPC for each
+      for (const l of lines) {
+        await supabase.from('receiving_items').insert({
+          receiving_id: rcv.id, product_id: l.product_id,
+          quantity: l.qty, unit_cost: l.cost,
+        });
+        await supabase.rpc('receive_stock', {
+          p_product_id: l.product_id,
+          p_quantity: l.qty,
+          p_unit_cost: l.cost,
+          p_reference_id: rcv.id,
+          p_reference_no: rcv.receive_no,
+          p_user_id: me.id,
+          p_notes: 'รับเข้าตาม ' + rcv.receive_no
+        });
+      }
+
+      toast(`รับเข้าเรียบร้อย ${rcv.receive_no}`, 'success');
+      lines = [];
+      renderLines();
+      document.getElementById('supplierSel').value = '';
+      document.getElementById('poRef').value = '';
+      document.getElementById('rcvNotes').value = '';
+      await loadRecent();
+      await loadProducts(); // refresh unit_cost
+    } catch (e) {
+      console.error(e);
+      toast('ผิดพลาด: ' + (e.message || ''), 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = '💾 บันทึกการรับเข้า';
+    }
+  });
+
+  renderLines();
+  </script>
+</body>
+</html>

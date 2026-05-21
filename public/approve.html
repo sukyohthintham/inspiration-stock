@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>อนุมัติใบเบิก · Inspiration Stock</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style> body { font-family: 'Prompt', sans-serif; background: #f8fafc; } </style>
+</head>
+<body class="min-h-screen pb-10">
+  <main class="max-w-7xl mx-auto px-4 py-6">
+    <h1 class="text-2xl font-bold text-slate-900 mb-1">อนุมัติใบเบิก ✅</h1>
+    <p class="text-sm text-slate-500 mb-6">รายการใบเบิกที่รอการอนุมัติจากหัวหน้า</p>
+
+    <!-- Tabs -->
+    <div class="flex gap-2 mb-4 overflow-x-auto">
+      <button data-st="pending"   class="status-tab px-4 py-2 rounded-lg text-sm font-medium border whitespace-nowrap">รออนุมัติ <span class="ml-1 px-1.5 py-0.5 bg-white/30 rounded text-xs" id="cntPending">0</span></button>
+      <button data-st="approved"  class="status-tab px-4 py-2 rounded-lg text-sm font-medium border whitespace-nowrap">อนุมัติแล้ว <span class="ml-1 px-1.5 py-0.5 bg-white/30 rounded text-xs" id="cntApproved">0</span></button>
+      <button data-st="issued"    class="status-tab px-4 py-2 rounded-lg text-sm font-medium border whitespace-nowrap">จ่ายแล้ว</button>
+      <button data-st="rejected"  class="status-tab px-4 py-2 rounded-lg text-sm font-medium border whitespace-nowrap">ไม่อนุมัติ</button>
+      <button data-st="all"       class="status-tab px-4 py-2 rounded-lg text-sm font-medium border whitespace-nowrap">ทั้งหมด</button>
+    </div>
+
+    <div id="reqList" class="space-y-3"></div>
+    <div id="emptyState" class="hidden text-center text-slate-500 py-12">ไม่มีใบเบิก</div>
+  </main>
+
+  <!-- Modal -->
+  <div id="modal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/50" onclick="closeModal()"></div>
+    <div class="absolute inset-x-4 top-10 bottom-10 max-w-2xl mx-auto bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div class="px-5 py-4 border-b flex items-center justify-between bg-slate-50">
+        <div>
+          <div id="mReqNo" class="font-mono font-bold text-lg">REQ-XXXX</div>
+          <div id="mReqMeta" class="text-xs text-slate-500">-</div>
+        </div>
+        <button onclick="closeModal()" class="text-slate-400 hover:text-slate-700 text-xl">✕</button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-5 space-y-4" id="mBody">-</div>
+      <div id="mActions" class="border-t p-4 bg-slate-50 flex gap-2 justify-end"></div>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/sidebar.js"></script>
+  <script>
+  let me = null;
+  let activeStatus = 'pending';
+
+  (async () => {
+    me = await setupAdminLayout('approve');
+    if (!me) return;
+    setupTabs();
+    await loadCounts();
+    await loadList();
+    // open detail if id query param
+    const url = new URL(window.location.href);
+    const id = url.searchParams.get('id');
+    if (id) openDetail(Number(id));
+  })();
+
+  function setupTabs() {
+    document.querySelectorAll('.status-tab').forEach(btn => {
+      const refresh = () => {
+        document.querySelectorAll('.status-tab').forEach(b => {
+          b.classList.remove('bg-slate-900','text-white','border-slate-900');
+          b.classList.add('bg-white','text-slate-700','border-slate-200');
+        });
+        btn.classList.remove('bg-white','text-slate-700','border-slate-200');
+        btn.classList.add('bg-slate-900','text-white','border-slate-900');
+      };
+      btn.addEventListener('click', () => {
+        activeStatus = btn.dataset.st;
+        refresh();
+        loadList();
+      });
+      if (btn.dataset.st === activeStatus) refresh();
+    });
+  }
+
+  async function loadCounts() {
+    const { count: p } = await supabase.from('requisitions').select('*', { count: 'exact', head: true }).eq('status', 'pending');
+    const { count: a } = await supabase.from('requisitions').select('*', { count: 'exact', head: true }).eq('status', 'approved');
+    document.getElementById('cntPending').textContent = p ?? 0;
+    document.getElementById('cntApproved').textContent = a ?? 0;
+  }
+
+  async function loadList() {
+    let q = supabase
+      .from('requisitions')
+      .select('id, req_no, status, purpose, created_at, approved_at, issued_at, total_items, requested_by, profiles!requested_by(full_name, department)')
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (activeStatus !== 'all') q = q.eq('status', activeStatus);
+    const { data } = await q;
+
+    const el = document.getElementById('reqList');
+    document.getElementById('emptyState').classList.toggle('hidden', (data||[]).length > 0);
+    el.innerHTML = (data || []).map(r => {
+      const sb = {
+        pending:   { c: 'bg-amber-100 text-amber-700', t: 'รออนุมัติ' },
+        approved:  { c: 'bg-blue-100 text-blue-700', t: 'อนุมัติแล้ว' },
+        issued:    { c: 'bg-green-100 text-green-700', t: 'จ่ายแล้ว' },
+        rejected:  { c: 'bg-red-100 text-red-700', t: 'ไม่อนุมัติ' },
+        cancelled: { c: 'bg-slate-100 text-slate-600', t: 'ยกเลิก' },
+      }[r.status] || { c: 'bg-slate-100', t: r.status };
+      return `
+        <button onclick="openDetail(${r.id})" class="w-full bg-white rounded-xl border border-slate-200 hover:shadow-md transition p-4 text-left">
+          <div class="flex items-center gap-3">
+            <div class="font-mono font-bold text-slate-900">${r.req_no}</div>
+            <span class="text-xs px-2 py-0.5 rounded-full ${sb.c}">${sb.t}</span>
+            <div class="flex-1"></div>
+            <div class="text-xs text-slate-500">${fmtDate(r.created_at)}</div>
+          </div>
+          <div class="mt-2 grid grid-cols-3 gap-2 text-sm">
+            <div>
+              <div class="text-[11px] text-slate-500">ผู้เบิก</div>
+              <div class="font-medium truncate">${r.profiles?.full_name || '-'}</div>
+            </div>
+            <div>
+              <div class="text-[11px] text-slate-500">แผนก</div>
+              <div class="font-medium truncate">${r.profiles?.department || '-'}</div>
+            </div>
+            <div>
+              <div class="text-[11px] text-slate-500">รายการ</div>
+              <div class="font-medium">${r.total_items || 0} รายการ</div>
+            </div>
+          </div>
+          ${r.purpose ? `<div class="mt-2 text-xs text-slate-600 line-clamp-1">📝 ${r.purpose}</div>` : ''}
+        </button>`;
+    }).join('');
+  }
+
+  async function openDetail(reqId) {
+    const { data: req } = await supabase
+      .from('requisitions')
+      .select('*, profiles!requested_by(full_name, department, phone)')
+      .eq('id', reqId)
+      .single();
+    if (!req) { toast('ไม่พบใบเบิก','error'); return; }
+    const { data: items } = await supabase
+      .from('requisition_items')
+      .select('id, quantity_requested, quantity_approved, quantity_issued, unit, products(id, sku, name, image_url, current_stock, unit_cost)')
+      .eq('requisition_id', reqId);
+
+    document.getElementById('mReqNo').textContent = req.req_no;
+    document.getElementById('mReqMeta').textContent =
+      `${req.profiles?.full_name || ''} · ${req.profiles?.department || '-'} · ${fmtDate(req.created_at)}`;
+
+    const body = document.getElementById('mBody');
+    body.innerHTML = `
+      ${req.purpose ? `<div class="bg-slate-50 p-3 rounded-lg text-sm"><span class="text-slate-500">วัตถุประสงค์:</span> ${req.purpose}</div>` : ''}
+      ${req.rejection_reason ? `<div class="bg-red-50 p-3 rounded-lg text-sm text-red-700">เหตุผลไม่อนุมัติ: ${req.rejection_reason}</div>` : ''}
+      <div class="border rounded-xl overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-xs text-slate-600">
+            <tr>
+              <th class="text-left p-2">สินค้า</th>
+              <th class="text-center p-2 w-16">คงเหลือ</th>
+              <th class="text-center p-2 w-20">ขอเบิก</th>
+              <th class="text-center p-2 w-20">อนุมัติ</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y">
+            ${(items||[]).map(it => {
+              const stock = Number(it.products?.current_stock || 0);
+              const reqQ = Number(it.quantity_requested);
+              const approved = it.quantity_approved ?? reqQ;
+              const enoughStock = stock >= reqQ;
+              return `
+              <tr>
+                <td class="p-2">
+                  <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-slate-100 rounded overflow-hidden flex items-center justify-center text-lg">
+                      ${it.products?.image_url ? `<img src="${it.products.image_url}" class="w-full h-full object-cover">` : '📦'}
+                    </div>
+                    <div class="min-w-0">
+                      <div class="font-medium truncate">${it.products?.name}</div>
+                      <div class="text-[10px] text-slate-500">${it.products?.sku}</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="text-center p-2 ${enoughStock ? 'text-slate-700' : 'text-red-600 font-bold'}">${stock}</td>
+                <td class="text-center p-2 font-medium">${reqQ}</td>
+                <td class="text-center p-2">
+                  ${req.status === 'pending'
+                    ? `<input type="number" min="0" max="${stock}" value="${approved}" data-item-id="${it.id}" class="approve-qty w-16 px-1 py-0.5 border rounded text-center text-sm">`
+                    : `<span class="font-bold">${approved}</span>`}
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+
+    const actions = document.getElementById('mActions');
+    if (req.status === 'pending') {
+      actions.innerHTML = `
+        <button onclick="rejectReq(${req.id})" class="px-4 py-2 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 font-medium">ไม่อนุมัติ</button>
+        <button onclick="approveReq(${req.id})" class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 font-medium">อนุมัติ</button>`;
+    } else if (req.status === 'approved') {
+      actions.innerHTML = `
+        <button onclick="issueReq(${req.id})" class="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 font-medium">📤 จ่ายของออกจากคลัง</button>`;
+    } else {
+      actions.innerHTML = `<button onclick="closeModal()" class="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 font-medium">ปิด</button>`;
+    }
+
+    document.getElementById('modal').classList.remove('hidden');
+  }
+
+  function closeModal() {
+    document.getElementById('modal').classList.add('hidden');
+    // remove query param
+    const url = new URL(window.location.href);
+    url.searchParams.delete('id');
+    window.history.replaceState({}, '', url);
+  }
+
+  async function approveReq(reqId) {
+    // collect approved qty
+    const updates = [];
+    document.querySelectorAll('.approve-qty').forEach(input => {
+      const id = Number(input.dataset.itemId);
+      const qty = Number(input.value || 0);
+      updates.push({ id, qty });
+    });
+    if (updates.some(u => u.qty < 0)) { toast('จำนวนต้องไม่ติดลบ', 'error'); return; }
+    if (!confirmDialog('ยืนยันการอนุมัติใบเบิกนี้?')) return;
+
+    try {
+      for (const u of updates) {
+        await supabase.from('requisition_items').update({ quantity_approved: u.qty }).eq('id', u.id);
+      }
+      const { error } = await supabase.from('requisitions').update({
+        status: 'approved',
+        approved_by: me.id,
+        approved_at: new Date().toISOString(),
+      }).eq('id', reqId);
+      if (error) throw error;
+      toast('อนุมัติเรียบร้อย ✅', 'success');
+      closeModal();
+      loadList(); loadCounts();
+    } catch (e) {
+      toast('ผิดพลาด: ' + e.message, 'error');
+    }
+  }
+
+  async function rejectReq(reqId) {
+    const reason = prompt('เหตุผลที่ไม่อนุมัติ?');
+    if (reason === null) return;
+    const { error } = await supabase.from('requisitions').update({
+      status: 'rejected',
+      approved_by: me.id,
+      approved_at: new Date().toISOString(),
+      rejection_reason: reason || '-',
+    }).eq('id', reqId);
+    if (error) { toast(error.message, 'error'); return; }
+    toast('บันทึกไม่อนุมัติแล้ว', 'success');
+    closeModal();
+    loadList(); loadCounts();
+  }
+
+  async function issueReq(reqId) {
+    if (!confirmDialog('ยืนยันจ่ายของออกจากคลัง? ระบบจะหักสต๊อกทันที')) return;
+    const { error } = await supabase.rpc('issue_requisition', { p_req_id: reqId, p_user_id: me.id });
+    if (error) { toast('ผิดพลาด: ' + error.message, 'error'); return; }
+    toast('จ่ายของเรียบร้อย 📤', 'success');
+    closeModal();
+    loadList(); loadCounts();
+  }
+  </script>
+</body>
+</html>

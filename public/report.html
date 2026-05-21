@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>รายงาน · Inspiration Stock</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style> body { font-family: 'Prompt', sans-serif; background: #f8fafc; } </style>
+</head>
+<body class="min-h-screen pb-10">
+  <main class="max-w-7xl mx-auto px-4 py-6">
+
+    <h1 class="text-2xl font-bold text-slate-900 mb-1">รายงานสรุป 📈</h1>
+    <p class="text-sm text-slate-500 mb-6">วิเคราะห์การเบิก-รับสินค้า สำหรับวางแผนการสั่งซื้อ</p>
+
+    <!-- Date range -->
+    <div class="bg-white rounded-2xl p-4 shadow-sm mb-4 flex flex-wrap gap-3 items-end">
+      <div>
+        <label class="block text-xs text-slate-600 mb-1">จากวันที่</label>
+        <input id="dateFrom" type="date" class="px-3 py-2 border border-slate-200 rounded-lg text-sm">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-600 mb-1">ถึงวันที่</label>
+        <input id="dateTo" type="date" class="px-3 py-2 border border-slate-200 rounded-lg text-sm">
+      </div>
+      <button id="applyBtn" class="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium">ดูข้อมูล</button>
+      <div class="flex-1"></div>
+      <button id="exportMovBtn" class="px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium">📥 Export ประวัติ CSV</button>
+      <button id="exportReorderBtn" class="px-3 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium">📋 Export ใบสั่งซื้อแนะนำ</button>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+      <!-- Top consumed bar chart -->
+      <div class="bg-white rounded-2xl p-5 shadow-sm">
+        <h3 class="font-semibold text-slate-900 mb-3">🏆 Top 10 สินค้าใช้บ่อยในช่วงนี้</h3>
+        <div class="h-72"><canvas id="topChart"></canvas></div>
+      </div>
+
+      <!-- Category share -->
+      <div class="bg-white rounded-2xl p-5 shadow-sm">
+        <h3 class="font-semibold text-slate-900 mb-3">📂 สัดส่วนการเบิกตามหมวด</h3>
+        <div class="h-72"><canvas id="catChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Reorder Suggestion -->
+    <div class="bg-white rounded-2xl p-5 shadow-sm mb-4">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-semibold text-slate-900">🛒 รายการแนะนำให้สั่งซื้อ (Reorder List)</h3>
+        <span id="reorderCount" class="text-xs text-slate-500">-</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-xs text-slate-600">
+            <tr>
+              <th class="text-left p-2">รหัส</th>
+              <th class="text-left p-2">สินค้า</th>
+              <th class="text-left p-2">หมวด</th>
+              <th class="text-center p-2">คงเหลือ</th>
+              <th class="text-center p-2">Min</th>
+              <th class="text-center p-2">Max</th>
+              <th class="text-center p-2 font-bold text-amber-700">แนะนำสั่ง</th>
+              <th class="text-right p-2">ประมาณราคา</th>
+            </tr>
+          </thead>
+          <tbody id="reorderBody" class="divide-y"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Movement History -->
+    <div class="bg-white rounded-2xl p-5 shadow-sm">
+      <h3 class="font-semibold text-slate-900 mb-3">📜 ประวัติการเคลื่อนไหวสต๊อก</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-xs text-slate-600">
+            <tr>
+              <th class="text-left p-2">วันที่</th>
+              <th class="text-left p-2">รหัส</th>
+              <th class="text-left p-2">สินค้า</th>
+              <th class="text-center p-2">ประเภท</th>
+              <th class="text-center p-2">จำนวน</th>
+              <th class="text-center p-2">คงเหลือ</th>
+              <th class="text-left p-2">อ้างอิง</th>
+              <th class="text-left p-2">ผู้ทำ</th>
+            </tr>
+          </thead>
+          <tbody id="movBody" class="divide-y text-sm"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/sidebar.js"></script>
+  <script>
+  let me = null;
+  let topChart, catChart;
+
+  (async () => {
+    me = await setupAdminLayout('report');
+    if (!me) return;
+
+    // Default: last 30 days
+    const today = new Date();
+    const past = new Date(); past.setDate(past.getDate() - 30);
+    document.getElementById('dateFrom').value = past.toISOString().slice(0,10);
+    document.getElementById('dateTo').value   = today.toISOString().slice(0,10);
+
+    document.getElementById('applyBtn').addEventListener('click', loadAll);
+    document.getElementById('exportMovBtn').addEventListener('click', exportMovements);
+    document.getElementById('exportReorderBtn').addEventListener('click', exportReorder);
+
+    await loadAll();
+  })();
+
+  function getRange() {
+    const from = document.getElementById('dateFrom').value;
+    const to   = document.getElementById('dateTo').value;
+    return {
+      from: from + 'T00:00:00',
+      to:   to   + 'T23:59:59',
+      fromStr: from, toStr: to
+    };
+  }
+
+  async function loadAll() {
+    await Promise.all([loadTopChart(), loadCatChart(), loadReorder(), loadMovements()]);
+  }
+
+  async function loadTopChart() {
+    const { from, to } = getRange();
+    const { data } = await supabase
+      .from('stock_movements')
+      .select('product_id, quantity, products(name, sku, unit)')
+      .eq('movement_type','OUT')
+      .gte('created_at', from).lte('created_at', to);
+
+    const map = {};
+    (data||[]).forEach(m => {
+      const k = m.product_id;
+      if (!map[k]) map[k] = { name: m.products?.name, qty: 0 };
+      map[k].qty += Math.abs(Number(m.quantity));
+    });
+    const arr = Object.values(map).sort((a,b)=>b.qty-a.qty).slice(0, 10);
+    const ctx = document.getElementById('topChart');
+    if (topChart) topChart.destroy();
+    topChart = new Chart(ctx, {
+      type: 'bar',
+      data: { labels: arr.map(x => x.name), datasets: [{ label: 'จำนวน', data: arr.map(x => x.qty), backgroundColor: 'rgba(59,130,246,0.7)', borderRadius: 6 }] },
+      options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { font: { family: 'Prompt' } } }, x: { beginAtZero: true } } }
+    });
+  }
+
+  async function loadCatChart() {
+    const { from, to } = getRange();
+    const { data } = await supabase
+      .from('stock_movements')
+      .select('quantity, products(category_id, categories(name, icon))')
+      .eq('movement_type','OUT')
+      .gte('created_at', from).lte('created_at', to);
+
+    const map = {};
+    (data||[]).forEach(m => {
+      const name = m.products?.categories?.name || 'อื่นๆ';
+      map[name] = (map[name] || 0) + Math.abs(Number(m.quantity));
+    });
+    const labels = Object.keys(map);
+    const values = Object.values(map);
+    const ctx = document.getElementById('catChart');
+    if (catChart) catChart.destroy();
+    catChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: { labels, datasets: [{ data: values, backgroundColor: ['#3b82f6','#22c55e','#f59e0b','#a855f7','#ec4899','#06b6d4'] }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { font: { family: 'Prompt' } } } } }
+    });
+  }
+
+  let reorderRows = [];
+  async function loadReorder() {
+    const { data } = await supabase
+      .from('v_low_stock')
+      .select('*, products!inner(unit_cost)')
+      .order('current_stock');
+    // join unit_cost via separate query
+    const { data: prods } = await supabase.from('products').select('id, unit_cost');
+    const costMap = Object.fromEntries((prods||[]).map(p => [p.id, p.unit_cost]));
+
+    reorderRows = (data||[]).map(r => ({
+      ...r,
+      unit_cost: costMap[r.id] || 0,
+      est_cost: (costMap[r.id] || 0) * r.suggested_reorder
+    }));
+
+    document.getElementById('reorderCount').textContent = `${reorderRows.length} รายการ`;
+    document.getElementById('reorderBody').innerHTML = reorderRows.map(r => `
+      <tr class="hover:bg-slate-50">
+        <td class="p-2 font-mono text-xs">${r.sku}</td>
+        <td class="p-2">${r.name}</td>
+        <td class="p-2 text-xs">${r.category_icon || ''} ${r.category_name || '-'}</td>
+        <td class="p-2 text-center text-red-600 font-bold">${r.current_stock}</td>
+        <td class="p-2 text-center text-xs">${r.min_stock}</td>
+        <td class="p-2 text-center text-xs">${r.max_stock}</td>
+        <td class="p-2 text-center font-bold text-amber-700">${r.suggested_reorder}</td>
+        <td class="p-2 text-right">${fmtCurrency(r.est_cost)}</td>
+      </tr>
+    `).join('') || '<tr><td colspan="8" class="text-center text-slate-400 p-4">✅ ไม่มีรายการที่ต้องสั่งซื้อ</td></tr>';
+  }
+
+  let movRows = [];
+  async function loadMovements() {
+    const { from, to } = getRange();
+    const { data } = await supabase
+      .from('v_movement_history')
+      .select('*')
+      .gte('created_at', from).lte('created_at', to)
+      .limit(500);
+    movRows = data || [];
+
+    const typeBadge = {
+      IN:    'bg-green-100 text-green-700',
+      OUT:   'bg-red-100 text-red-700',
+      ADJUST: 'bg-blue-100 text-blue-700',
+    };
+    document.getElementById('movBody').innerHTML = movRows.map(m => `
+      <tr class="hover:bg-slate-50">
+        <td class="p-2 text-xs whitespace-nowrap">${fmtDate(m.created_at)}</td>
+        <td class="p-2 font-mono text-xs">${m.sku}</td>
+        <td class="p-2">${m.product_name}</td>
+        <td class="p-2 text-center"><span class="text-[10px] px-2 py-0.5 rounded ${typeBadge[m.movement_type]}">${m.movement_type}</span></td>
+        <td class="p-2 text-center font-medium ${Number(m.quantity)>0?'text-green-600':'text-red-600'}">${Number(m.quantity) > 0 ? '+' : ''}${Number(m.quantity)}</td>
+        <td class="p-2 text-center text-xs">${m.balance_after}</td>
+        <td class="p-2 text-xs">${m.reference_no || '-'}</td>
+        <td class="p-2 text-xs">${m.user_name || '-'}</td>
+      </tr>
+    `).join('') || '<tr><td colspan="8" class="text-center text-slate-400 p-4">ไม่มีข้อมูล</td></tr>';
+  }
+
+  // CSV helpers
+  function downloadCSV(filename, rows) {
+    const csv = rows.map(r => r.map(c => {
+      const s = String(c ?? '');
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g,'""')}"` : s;
+    }).join(',')).join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportMovements() {
+    if (movRows.length === 0) { toast('ไม่มีข้อมูล', 'warning'); return; }
+    const rows = [['วันที่','รหัส','สินค้า','ประเภท','จำนวน','คงเหลือ','อ้างอิง','ผู้ทำรายการ','หมายเหตุ']];
+    movRows.forEach(m => rows.push([
+      fmtDate(m.created_at), m.sku, m.product_name, m.movement_type,
+      m.quantity, m.balance_after, m.reference_no || '', m.user_name || '', m.notes || ''
+    ]));
+    downloadCSV(`movements_${getRange().fromStr}_to_${getRange().toStr}.csv`, rows);
+    toast('Export เรียบร้อย', 'success');
+  }
+
+  function exportReorder() {
+    if (reorderRows.length === 0) { toast('ไม่มีรายการ', 'warning'); return; }
+    const rows = [['รหัส','สินค้า','หมวด','คงเหลือ','Min','Max','แนะนำสั่ง','ต้นทุน/หน่วย','รวม']];
+    reorderRows.forEach(r => rows.push([
+      r.sku, r.name, r.category_name || '', r.current_stock, r.min_stock, r.max_stock,
+      r.suggested_reorder, r.unit_cost, r.est_cost
+    ]));
+    downloadCSV(`reorder_list_${new Date().toISOString().slice(0,10)}.csv`, rows);
+    toast('Export เรียบร้อย', 'success');
+  }
+  </script>
+</body>
+</html>
