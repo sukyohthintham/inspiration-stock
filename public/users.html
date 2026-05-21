@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>จัดการผู้ใช้ · Inspiration Stock</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style> body { font-family: 'Prompt', sans-serif; background: #f8fafc; } </style>
+</head>
+<body class="min-h-screen pb-10">
+  <main class="max-w-7xl mx-auto px-4 py-6">
+
+    <div class="flex items-center justify-between mb-1">
+      <h1 class="text-2xl font-bold text-slate-900">จัดการผู้ใช้ 👥</h1>
+      <div class="flex gap-2">
+        <span id="totalCount" class="px-3 py-1.5 bg-slate-100 rounded-lg text-sm font-medium">- คน</span>
+      </div>
+    </div>
+    <p class="text-sm text-slate-500 mb-6">เปลี่ยนสิทธิ เปิด/ปิดการใช้งาน · เฉพาะ Admin เท่านั้น</p>
+
+    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4 text-sm">
+      <div class="font-medium text-blue-900 mb-2">📖 คำอธิบายระดับสิทธิ</div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs text-slate-700">
+        <div><span class="inline-block w-12 px-2 py-0.5 bg-slate-200 rounded text-center font-mono">staff</span> &nbsp; เบิกของได้ + ดูประวัติของตัวเอง</div>
+        <div><span class="inline-block w-16 px-2 py-0.5 bg-blue-200 rounded text-center font-mono">manager</span> &nbsp; เพิ่ม: อนุมัติ, รับเข้า, สินค้า, รายงาน</div>
+        <div><span class="inline-block w-12 px-2 py-0.5 bg-purple-200 rounded text-center font-mono">admin</span> &nbsp; เพิ่ม: จัดการผู้ใช้ + ทุกฟังก์ชัน</div>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-2xl p-4 shadow-sm mb-4 flex flex-wrap gap-3 items-center">
+      <input id="searchInput" type="text" placeholder="🔍 ค้นหา ชื่อ/แผนก/email..."
+        class="flex-1 min-w-[200px] px-4 py-2 border border-slate-200 rounded-lg text-sm">
+      <select id="roleFilter" class="px-3 py-2 border border-slate-200 rounded-lg text-sm">
+        <option value="">ทุกระดับสิทธิ</option>
+        <option value="admin">Admin</option>
+        <option value="manager">Manager</option>
+        <option value="staff">Staff</option>
+      </select>
+      <select id="statusFilter" class="px-3 py-2 border border-slate-200 rounded-lg text-sm">
+        <option value="">ทุกสถานะ</option>
+        <option value="active">ใช้งาน</option>
+        <option value="inactive">ปิดใช้งาน</option>
+      </select>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 text-xs text-slate-600">
+          <tr>
+            <th class="text-left p-3">ชื่อ-นามสกุล</th>
+            <th class="text-left p-3">Email</th>
+            <th class="text-left p-3">แผนก</th>
+            <th class="text-left p-3">เบอร์โทร</th>
+            <th class="text-center p-3">ระดับสิทธิ</th>
+            <th class="text-center p-3">สถานะ</th>
+            <th class="text-center p-3">การเบิก</th>
+            <th class="text-left p-3">สร้างเมื่อ</th>
+          </tr>
+        </thead>
+        <tbody id="userBody" class="divide-y"></tbody>
+      </table>
+      <div id="emptyState" class="hidden text-center py-12 text-slate-500">ไม่พบผู้ใช้</div>
+    </div>
+
+    <p class="text-xs text-slate-500 mt-4">
+      💡 <strong>เคล็ดลับ:</strong> เปลี่ยน role โดยคลิก dropdown ในคอลัมน์ "ระดับสิทธิ" ค่าจะถูกบันทึกทันที · เปิด/ปิดการใช้งานโดยคลิก toggle ในคอลัมน์ "สถานะ"
+    </p>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/sidebar.js"></script>
+  <script>
+  let me = null;
+  let users = [];
+
+  (async () => {
+    me = await setupAdminLayout('users');
+    if (!me) return;
+    if (me.role !== 'admin') {
+      alert('หน้านี้สำหรับ Admin เท่านั้น');
+      window.location.href = 'dashboard.html';
+      return;
+    }
+    await loadUsers();
+  })();
+
+  async function loadUsers() {
+    const { data: profiles, error } = await supabase
+      .from('profiles')
+      .select('id, full_name, nickname, department, phone, role, is_active, avatar_url, created_at')
+      .order('created_at', { ascending: true });
+    if (error) { toast('โหลดข้อมูลผิดพลาด: ' + error.message, 'error'); return; }
+
+    const { data: counts } = await supabase.from('requisitions').select('requested_by');
+    const reqCountMap = {};
+    (counts || []).forEach(r => {
+      reqCountMap[r.requested_by] = (reqCountMap[r.requested_by] || 0) + 1;
+    });
+
+    users = (profiles || []).map(p => ({ ...p, req_count: reqCountMap[p.id] || 0 }));
+    document.getElementById('totalCount').text
