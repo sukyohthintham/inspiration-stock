@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>รายงาน · Inspiration Stock</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style> body { font-family: 'Prompt', sans-serif; background: #f8fafc; } </style>
+</head>
+<body class="min-h-screen pb-10">
+  <main class="max-w-7xl mx-auto px-4 py-6">
+    <h1 class="text-2xl font-bold text-slate-900 mb-1">รายงานสรุป 📈</h1>
+    <p class="text-sm text-slate-500 mb-4">วิเคราะห์การเบิก-รับสินค้า แยกตามมิติและช่วงเวลา</p>
+
+    <!-- Period Tabs -->
+    <div class="bg-white rounded-2xl p-2 shadow-sm mb-4 inline-flex gap-1">
+      <button data-period="day"   class="period-tab px-4 py-2 rounded-lg text-sm font-medium">วันนี้</button>
+      <button data-period="week"  class="period-tab px-4 py-2 rounded-lg text-sm font-medium">สัปดาห์นี้</button>
+      <button data-period="month" class="period-tab px-4 py-2 rounded-lg text-sm font-medium">เดือนนี้</button>
+      <button data-period="year"  class="period-tab px-4 py-2 rounded-lg text-sm font-medium">ปีนี้</button>
+      <button data-period="custom" class="period-tab px-4 py-2 rounded-lg text-sm font-medium">กำหนดเอง</button>
+    </div>
+
+    <!-- Custom Date Range (hidden by default) -->
+    <div id="customRange" class="bg-white rounded-2xl p-4 shadow-sm mb-4 hidden flex-wrap gap-3 items-end">
+      <div>
+        <label class="block text-xs text-slate-600 mb-1">จากวันที่</label>
+        <input id="dateFrom" type="date" class="px-3 py-2 border border-slate-200 rounded-lg text-sm">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-600 mb-1">ถึงวันที่</label>
+        <input id="dateTo" type="date" class="px-3 py-2 border border-slate-200 rounded-lg text-sm">
+      </div>
+      <button id="applyCustomBtn" class="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium">ดูข้อมูล</button>
+    </div>
+
+    <!-- Period info -->
+    <div class="text-xs text-slate-500 mb-4" id="periodInfo">-</div>
+
+    <!-- KPI Summary -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+      <div class="bg-white rounded-xl p-4 shadow-sm">
+        <div class="text-xs text-slate-500">ใบเบิกในช่วง</div>
+        <div id="kpiReqs" class="text-2xl font-bold text-blue-700 mt-1">-</div>
+      </div>
+      <div class="bg-white rounded-xl p-4 shadow-sm">
+        <div class="text-xs text-slate-500">จำนวนสินค้าที่จ่าย</div>
+        <div id="kpiQty" class="text-2xl font-bold text-green-700 mt-1">-</div>
+      </div>
+      <div class="bg-white rounded-xl p-4 shadow-sm">
+        <div class="text-xs text-slate-500">มูลค่าที่จ่ายออก</div>
+        <div id="kpiValue" class="text-2xl font-bold text-amber-700 mt-1">-</div>
+      </div>
+      <div class="bg-white rounded-xl p-4 shadow-sm">
+        <div class="text-xs text-slate-500">ผู้เบิก (active)</div>
+        <div id="kpiUsers" class="text-2xl font-bold text-purple-700 mt-1">-</div>
+      </div>
+    </div>
+
+    <!-- Dimension Tabs -->
+    <div class="bg-white rounded-2xl p-2 shadow-sm mb-4 inline-flex gap-1">
+      <button data-dim="employee"   class="dim-tab px-4 py-2 rounded-lg text-sm font-medium">👤 ตามพนักงาน</button>
+      <button data-dim="department" class="dim-tab px-4 py-2 rounded-lg text-sm font-medium">🏢 ตามแผนก</button>
+      <button data-dim="product"    class="dim-tab px-4 py-2 rounded-lg text-sm font-medium">📦 ตามสินค้า</button>
+      <button data-dim="category"   class="dim-tab px-4 py-2 rounded-lg text-sm font-medium">🗂️ ตามหมวด</button>
+    </div>
+
+    <button id="exportBtn" class="float-right mb-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium">📥 Export CSV</button>
+
+    <!-- Chart + Table layout -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4 clear-both">
+      <div class="bg-white rounded-2xl p-5 shadow-sm lg:col-span-2">
+        <h3 id="chartTitle" class="font-semibold text-slate-900 mb-3">-</h3>
+        <div class="h-80"><canvas id="mainChart"></canvas></div>
+      </div>
+      <div class="bg-white rounded-2xl p-5 shadow-sm">
+        <h3 id="pieTitle" class="font-semibold text-slate-900 mb-3">สัดส่วน</h3>
+        <div class="h-80"><canvas id="pieChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Detail Table -->
+    <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+      <div class="p-4 border-b flex items-center justify-between">
+        <h3 class="font-semibold text-slate-900" id="tableTitle">รายละเอียด</h3>
+        <input id="searchInput" type="text" placeholder="🔍 ค้นหา..." class="px-3 py-1.5 border border-slate-200 rounded-lg text-sm">
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-xs text-slate-600" id="tableHead"></thead>
+          <tbody id="tableBody" class="divide-y"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Movement History (collapsible) -->
+    <details class="mt-6 bg-white rounded-2xl shadow-sm">
+      <summary class="p-4 cursor-pointer font-semibold text-slate-900">📜 ประวัติการเคลื่อนไหวสต๊อก (Movement History)</summary>
+      <div class="overflow-x-auto p-4">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-xs text-slate-600">
+            <tr>
+              <th class="text-left p-2">วันที่</th>
+              <th class="text-left p-2">รหัส</th>
+              <th class="text-left p-2">สินค้า</th>
+              <th class="text-center p-2">ประเภท</th>
+              <th class="text-center p-2">จำนวน</th>
+              <th class="text-center p-2">คงเหลือ</th>
+              <th class="text-left p-2">อ้างอิง</th>
+              <th class="text-left p-2">ผู้ทำ</th>
+            </tr>
+          </thead>
+          <tbody id="movBody" class="divide-y text-sm"></tbody>
+        </table>
+      </div>
+    </details>
+
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/sidebar.js"></script>
+  <script>
+  let me = null;
+  let activePeriod = 'month';
+  let activeDim = 'employee';
+  let currentRange = { from: null, to: null };
+  let rawData = []; // ข้อมูลดิบในช่วงเวลาที่เลือก
+  let rawMovements = [];
+  let aggData = []; // ข้อมูลรวมตามมิติ
+  let mainChart = null, pieChart = null;
+
+  (async () => {
+    me = await setupAdminLayout('report');
+    if (!me) return;
+    setupTabs();
+    setActivePeriod('month');
+    setActiveDim('employee');
+    await reloadAll();
+  })();
+
+  // ====== TABS ======
+  function setupTabs() {
+    document.querySelectorAll('.period-tab').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const p = btn.dataset.period;
+        setActivePeriod(p);
+        if (p === 'custom') {
+          document.getElementById('customRange').classList.remove('hidden');
+          document.getElementById('customRange').classList.add('flex');
+          // default ช่วง 30 วันล่าสุด
+          const today = new Date();
+          const past = new Date(); past.setDate(past.getDate() - 30);
+          document.getElementById('dateFrom').value = past.toISOString().slice(0,10);
+          document.getElementById('dateTo').value   = today.toISOString().slice(0,10);
+        } else {
+          document.getElementById('customRange').classList.add('hidden');
+          document.getElementById('customRange').classList.remove('flex');
+          await reloadAll();
+        }
+      });
+    });
+
+    document.querySelectorAll('.dim-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        setActiveDim(btn.dataset.dim);
+        renderDimension();
+      });
+    });
+
+    document.getElementById('applyCustomBtn').addEventListener('click', reloadAll);
+    document.getElementById('searchInput').addEventListener('input', renderDimension);
+    document.getElementById('exportBtn').addEventListener('click', exportCSV);
+  }
+
+  function setActivePeriod(p) {
+    activePeriod = p;
+    document.querySelectorAll('.period-tab').forEach(b => {
+      b.classList.remove('bg-slate-900','text-white');
+      b.classList.add('text-slate-600','hover:bg-slate-100');
+    });
+    const active = document.querySelector('.period-tab[data-period="' + p + '"]');
+    if (active) {
+      active.classList.add('bg-slate-900','text-white');
+      active.classList.remove('text-slate-600','hover:bg-slate-100');
+    }
+  }
+
+  function setActiveDim(d) {
+    activeDim = d;
+    document.querySelectorAll('.dim-tab').forEach(b => {
+      b.classList.remove('bg-blue-600','text-white');
+      b.classList.add('text-slate-600','hover:bg-slate-100');
+    });
+    const active = document.querySelector('.dim-tab[data-dim="' + d + '"]');
+    if (active) {
+      active.classList.add('bg-blue-600','text-white');
+      active.classList.remove('text-slate-600','hover:bg-slate-100');
+    }
+  }
+
+  // ====== DATE RANGE ======
+  function getDateRange() {
+    const now = new Date();
+    let from, to = new Date(now);
+    to.setHours(23,59,59,999);
+
+    if (activePeriod === 'day') {
+      from = new Date(now); from.setHours(0,0,0,0);
+    } else if (activePeriod === 'week') {
+      from = new Date(now);
+      const day = from.getDay(); // 0=Sun
+      const diff = (day === 0 ? 6 : day - 1); // จันทร์-อาทิตย์
+      from.setDate(from.getDate() - diff);
+      from.setHours(0,0,0,0);
+    } else if (activePeriod === 'month') {
+      from = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else if (activePeriod === 'year') {
+      from = new Date(now.getFullYear(), 0, 1);
+    } else if (activePeriod === 'custom') {
+      from = new Date(document.getElementById('dateFrom').value + 'T00:00:00');
+      to = new Date(document.getElementById('dateTo').value + 'T23:59:59');
+    }
+    return { from, to };
+  }
+
+  function fmtDateTh(d) {
+    return d.toLocaleDateString('th-TH', { year:'numeric', month:'short', day:'numeric' });
+  }
+
+  // ====== DATA LOADING ======
+  async function reloadAll() {
+    const range = getDateRange();
+    currentRange = range;
+    const fromISO = range.from.toISOString();
+    const toISO = range.to.toISOString();
+
+    document.getElementById('periodInfo').textContent =
+      'ช่วงเวลา: ' + fmtDateTh(range.from) + ' — ' + fmtDateTh(range.to);
+
+    // โหลด stock movements ที่เป็น OUT พร้อมข้อมูลที่เชื่อมโยง
+    // ใช้ requisitions + items + products + profiles เพื่อให้ได้ข้อมูลครบ
+    const { data: reqs, error } = await supabase
+      .from('requisitions')
+      .select('id, req_no, status, created_at, issued_at, requested_by, department, profiles!requested_by(full_name, department), requisition_items(quantity_issued, quantity_approved, quantity_requested, products(id, sku, name, unit, unit_cost, category_id, categories(name, icon)))')
+      .gte('created_at', fromISO)
+      .lte('created_at', toISO)
+      .order('created_at', { ascending: false });
+
+    if (error) { toast('โหลดข้อมูลผิดพลาด: ' + error.message, 'error'); return; }
+    rawData = reqs || [];
+
+    // โหลด movements history
+    const { data: movs } = await supabase
+      .from('v_movement_history')
+      .select('*')
+      .gte('created_at', fromISO)
+      .lte('created_at', toISO)
+      .limit(500);
+    rawMovements = movs || [];
+
+    renderKPI();
+    renderMovements();
+    renderDimension();
+  }
+
+  // ====== KPI ======
+  function renderKPI() {
+    const issuedReqs = rawData.filter(r => r.status === 'issued');
+    const allItems = issuedReqs.flatMap(r => (r.requisition_items || []));
+    const totalQty = allItems.reduce((s, i) => s + Number(i.quantity_issued || 0), 0);
+    const totalVal = allItems.reduce((s, i) => s + Number(i.quantity_issued || 0) * Number(i.products?.unit_cost || 0), 0);
+    const uniqUsers = new Set(issuedReqs.map(r => r.requested_by)).size;
+
+    document.getElementById('kpiReqs').textContent = issuedReqs.length.toLocaleString('th-TH');
+    document.getElementById('kpiQty').textContent = totalQty.toLocaleString('th-TH');
+    document.getElementById('kpiValue').textContent = fmtCurrency(totalVal);
+    document.getElementById('kpiUsers').textContent = uniqUsers.toLocaleString('th-TH');
+  }
+
+  // ====== DIMENSION RENDER ======
+  function renderDimension() {
+    const issuedReqs = rawData.filter(r => r.status === 'issued');
+    const term = (document.getElementById('searchInput').value || '').toLowerCase();
+    let agg = {}; // key -> { name, qty, value, reqs, items }
+
+    if (activeDim === 'employee') {
+      issuedReqs.forEach(r => {
+        const key = r.requested_by;
+        const name = r.profiles?.full_name || '?';
+        const dept = r.profiles?.department || '-';
+        if (!agg[key]) agg[key] = { name, dept, qty: 0, value: 0, reqs: 0, items: [] };
+        agg[key].reqs += 1;
+        (r.requisition_items || []).forEach(i => {
+          const q = Number(i.quantity_issued || 0);
+          const v = q * Number(i.products?.unit_cost || 0);
+          agg[key].qty += q;
+          agg[key].value += v;
+          agg[key].items.push({ name: i.products?.name, qty: q, sku: i.products?.sku });
+        });
+      });
+    } else if (activeDim === 'department') {
+      issuedReqs.forEach(r => {
+        const key = r.profiles?.department || r.department || 'ไม่ระบุแผนก';
+        if (!agg[key]) agg[key] = { name: key, qty: 0, value: 0, reqs: 0, items: [] };
+        agg[key].reqs += 1;
+        (r.requisition_items || []).forEach(i => {
+          const q = Number(i.quantity_issued || 0);
+          const v = q * Number(i.products?.unit_cost || 0);
+          agg[key].qty += q;
+          agg[key].value += v;
+          agg[key].items.push({ name: i.products?.name, qty: q });
+        });
+      });
+    } else if (activeDim === 'product') {
+      issuedReqs.forEach(r => {
+        (r.requisition_items || []).forEach(i => {
+          const key = i.products?.id;
+          if (!key) return;
+          if (!agg[key]) agg[key] = {
+            name: i.products?.name, sku: i.products?.sku, unit: i.products?.unit,
+            qty: 0, value: 0, reqs: 0, items: []
+          };
+          const q = Number(i.quantity_issued || 0);
+          const v = q * Number(i.products?.unit_cost || 0);
+          agg[key].qty += q;
+          agg[key].value += v;
+          agg[key].reqs += 1;
+        });
+      });
+    } else if (activeDim === 'category') {
+      issuedReqs.forEach(r => {
+        (r.requisition_items || []).forEach(i => {
+          const cat = i.products?.categories;
+          const key = cat?.name || 'ไม่ระบุหมวด';
+          const icon = cat?.icon || '📦';
+          if (!agg[key]) agg[key] = { name: icon + ' ' + key, qty: 0, value: 0, reqs: 0, items: [] };
+          const q = Number(i.quantity_issued || 0);
+          const v = q * Number(i.products?.unit_cost || 0);
+          agg[key].qty += q;
+          agg[key].value += v;
+        });
+      });
+    }
+
+    // Convert to array + filter + sort
+    aggData = Object.entries(agg).map(([k, v]) => ({ key: k, ...v }))
+      .filter(r => !term || (r.name || '').toLowerCase().includes(term) || (r.dept || '').toLowerCase().includes(term) || (r.sku || '').toLowerCase().includes(term))
+      .sort((a, b) => b.qty - a.qty);
+
+    renderChart();
+    renderTable();
+  }
+
+  // ====== CHARTS ======
+  function renderChart() {
+    const top = aggData.slice(0, 10);
+    const labels = top.map(x => x.name);
+    const data = top.map(x => x.qty);
+
+    const titleMap = {
+      employee: 'Top 10 พนักงานที่เบิกเยอะ',
+      department: 'การเบิกตามแผนก',
+      product: 'Top 10 สินค้าที่เบิก',
+      category: 'การเบิกตามหมวดสินค้า',
+    };
+    document.getElementById('chartTitle').textContent = titleMap[activeDim] + ' (จำนวน)';
+    document.getElementById('pieTitle').textContent = 'สัดส่วนมูลค่า';
+
+    // Bar chart
+    const ctx = document.getElementById('mainChart');
+    if (mainChart) mainChart.destroy();
+    mainChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{ label: 'จำนวน', data, backgroundColor: 'rgba(59,130,246,0.7)', borderRadius: 6 }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { ticks: { font: { family: 'Prompt' } } }, x: { beginAtZero: true } }
+      }
+    });
+
+    // Pie chart (by value)
+    const pieData = aggData.slice(0, 8).map(x => x.value);
+    const pieLabels = aggData.slice(0, 8).map(x => x.name);
+    const ctx2 = document.getElementById('pieChart');
+    if (pieChart) pieChart.destroy();
+    pieChart = new Chart(ctx2, {
+      type: 'doughnut',
+      data: { labels: pieLabels, datasets: [{
+        data: pieData,
+        backgroundColor: ['#3b82f6','#22c55e','#f59e0b','#a855f7','#ec4899','#06b6d4','#ef4444','#84cc16']
+      }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { font: { family: 'Prompt', size: 10 } } } }
+      }
+    });
+  }
+
+  // ====== TABLE ======
+  function renderTable() {
+    const headMap = {
+      employee:   ['ลำดับ', 'พนักงาน', 'แผนก', 'จำนวนใบเบิก', 'จำนวนสินค้า', 'มูลค่ารวม'],
+      department: ['ลำดับ', 'แผนก', 'จำนวนใบเบิก', 'จำนวนสินค้า', 'มูลค่ารวม'],
+      product:    ['ลำดับ', 'รหัส', 'สินค้า', 'หน่วย', 'จำนวนที่จ่าย', 'มูลค่ารวม'],
+      category:   ['ลำดับ', 'หมวด', 'จำนวนที่จ่าย', 'มูลค่ารวม'],
+    };
+    const titleMap = {
+      employee: 'รายละเอียดการเบิกตามพนักงาน',
+      department: 'รายละเอียดการเบิกตามแผนก',
+      product: 'รายละเอียดการเบิกตามสินค้า',
+      category: 'รายละเอียดการเบิกตามหมวด',
+    };
+    document.getElementById('tableTitle').textContent = titleMap[activeDim];
+    document.getElementById('tableHead').innerHTML =
+      '<tr>' + headMap[activeDim].map(h => '<th class="text-left p-2">' + h + '</th>').join('') + '</tr>';
+
+    const tb = document.getElementById('tableBody');
+    if (aggData.length === 0) {
+      tb.innerHTML = '<tr><td colspan="6" class="text-center text-slate-400 p-4">ไม่มีข้อมูล</td></tr>';
+      return;
+    }
+
+    tb.innerHTML = aggData.map((r, i) => {
+      const rank = '<td class="p-2 text-slate-400 font-bold">#' + (i+1) + '</td>';
+      if (activeDim === 'employee') {
+        return '<tr class="hover:bg-slate-50">' + rank +
+          '<td class="p-2 font-medium">' + r.name + '</td>' +
+          '<td class="p-2 text-xs">' + (r.dept || '-') + '</td>' +
+          '<td class="p-2 text-center">' + r.reqs + '</td>' +
+          '<td class="p-2 text-center font-bold text-blue-600">' + r.qty.toLocaleString('th-TH') + '</td>' +
+          '<td class="p-2 text-right">' + fmtCurrency(r.value) + ' ฿</td></tr>';
+      }
+      if (activeDim === 'department') {
+        return '<tr class="hover:bg-slate-50">' + rank +
+          '<td class="p-2 font-medium">' + r.name + '</td>' +
+          '<td class="p-2 text-center">' + r.reqs + '</td>' +
+          '<td class="p-2 text-center font-bold text-blue-600">' + r.qty.toLocaleString('th-TH') + '</td>' +
+          '<td class="p-2 text-right">' + fmtCurrency(r.value) + ' ฿</td></tr>';
+      }
+      if (activeDim === 'product') {
+        return '<tr class="hover:bg-slate-50">' + rank +
+          '<td class="p-2 font-mono text-xs">' + (r.sku || '-') + '</td>' +
+          '<td class="p-2 font-medium">' + r.name + '</td>' +
+          '<td class="p-2 text-xs">' + (r.unit || '-') + '</td>' +
+          '<td class="p-2 text-center font-bold text-blue-600">' + r.qty.toLocaleString('th-TH') + '</td>' +
+          '<td class="p-2 text-right">' + fmtCurrency(r.value) + ' ฿</td></tr>';
+      }
+      if (activeDim === 'category') {
+        return '<tr class="hover:bg-slate-50">' + rank +
+          '<td class="p-2 font-medium">' + r.name + '</td>' +
+          '<td class="p-2 text-center font-bold text-blue-600">' + r.qty.toLocaleString('th-TH') + '</td>' +
+          '<td class="p-2 text-right">' + fmtCurrency(r.value) + ' ฿</td></tr>';
+      }
+    }).join('');
+  }
+
+  // ====== MOVEMENTS ======
+  function renderMovements() {
+    const typeBadge = {
+      IN:    'bg-green-100 text-green-700',
+      OUT:   'bg-red-100 text-red-700',
+      ADJUST:'bg-blue-100 text-blue-700',
+    };
+    const tb = document.getElementById('movBody');
+    if (rawMovements.length === 0) {
+      tb.innerHTML = '<tr><td colspan="8" class="text-center text-slate-400 p-4">ไม่มีข้อมูล</td></tr>';
+      return;
+    }
+    tb.innerHTML = rawMovements.map(m =>
+      '<tr class="hover:bg-slate-50">' +
+        '<td class="p-2 text-xs whitespace-nowrap">' + fmtDate(m.created_at) + '</td>' +
+        '<td class="p-2 font-mono text-xs">' + m.sku + '</td>' +
+        '<td class="p-2">' + m.product_name + '</td>' +
+        '<td class="p-2 text-center"><span class="text-[10px] px-2 py-0.5 rounded ' + typeBadge[m.movement_type] + '">' + m.movement_type + '</span></td>' +
+        '<td class="p-2 text-center font-medium ' + (Number(m.quantity)>0?'text-green-600':'text-red-600') + '">' + (Number(m.quantity) > 0 ? '+' : '') + Number(m.quantity) + '</td>' +
+        '<td class="p-2 text-center text-xs">' + m.balance_after + '</td>' +
+        '<td class="p-2 text-xs">' + (m.reference_no || '-') + '</td>' +
+        '<td class="p-2 text-xs">' + (m.user_name || '-') + '</td>' +
+      '</tr>'
+    ).join('');
+  }
+
+  // ====== EXPORT CSV ======
+  function exportCSV() {
+    if (aggData.length === 0) { toast('ไม่มีข้อมูล', 'warning'); return; }
+    let header, rows;
+    if (activeDim === 'employee') {
+      header = ['ลำดับ','พนักงาน','แผนก','จำนวนใบเบิก','จำนวนสินค้า','มูลค่ารวม'];
+      rows = aggData.map((r,i) => [i+1, r.name, r.dept || '', r.reqs, r.qty, r.value.toFixed(2)]);
+    } else if (activeDim === 'department') {
+      header = ['ลำดับ','แผนก','จำนวนใบเบิก','จำนวนสินค้า','มูลค่ารวม'];
+      rows = aggData.map((r,i) => [i+1, r.name, r.reqs, r.qty, r.value.toFixed(2)]);
+    } else if (activeDim === 'product') {
+      header = ['ลำดับ','รหัส','สินค้า','หน่วย','จำนวนที่จ่าย','มูลค่ารวม'];
+      rows = aggData.map((r,i) => [i+1, r.sku || '', r.name, r.unit || '', r.qty, r.value.toFixed(2)]);
+    } else if (activeDim === 'category') {
+      header = ['ลำดับ','หมวด','จำนวนที่จ่าย','มูลค่ารวม'];
+      rows = aggData.map((r,i) => [i+1, r.name, r.qty, r.value.toFixed(2)]);
+    }
+    const csv = [header, ...rows].map(r => r.map(c => {
+      const s = String(c ?? '');
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? '"' + s.replace(/"/g,'""') + '"' : s;
+    }).join(',')).join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const periodLabel = activePeriod === 'custom'
+      ? document.getElementById('dateFrom').value + '_' + document.getElementById('dateTo').value
+      : activePeriod;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'report_' + activeDim + '_' + periodLabel + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('Export เรียบร้อย', 'success');
+  }
+  </script>
+</body>
+</html>
