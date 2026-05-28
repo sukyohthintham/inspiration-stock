@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>จัดการคลัง · Inspiration Stock</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style> body { font-family: 'Prompt', sans-serif; background: #f8fafc; } </style>
+</head>
+<body class="min-h-screen pb-10">
+  <main class="max-w-7xl mx-auto px-4 py-6">
+
+    <div class="flex items-center justify-between mb-1 flex-wrap gap-2">
+      <h1 class="text-2xl font-bold text-slate-900">จัดการคลัง / สาขา 🏢</h1>
+      <button onclick="openCreateModal()" class="px-3 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 text-sm">+ เพิ่มคลัง</button>
+    </div>
+    <p class="text-sm text-slate-500 mb-6">จัดการคลังสินค้าและสาขาที่มีในระบบ · สินค้าทุกชิ้นจะถูกแบ่ง stock อัตโนมัติทุก location</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="locationCards"></div>
+  </main>
+
+  <div id="modal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/50" onclick="closeModal()"></div>
+    <div class="absolute inset-x-4 top-20 max-w-lg mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
+      <div class="px-5 py-3 border-b flex items-center justify-between bg-slate-50">
+        <div id="mTitle" class="font-bold text-lg">เพิ่ม / แก้ไขคลัง</div>
+        <button onclick="closeModal()" class="text-slate-400 hover:text-slate-700 text-xl">✕</button>
+      </div>
+      <div class="p-5 space-y-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">รหัส (Code) *</label>
+          <input id="fCode" type="text" placeholder="OFFICE / WAREHOUSE / WH01" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm uppercase">
+          <div class="text-[10px] text-slate-500 mt-1">ตัวอักษรภาษาอังกฤษ ตัวเลข เครื่องหมาย _ เท่านั้น</div>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">ชื่อคลัง *</label>
+          <input id="fName" type="text" placeholder="Warehouse สาขาบางนา" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">คำอธิบาย</label>
+          <input id="fDesc" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">ที่อยู่</label>
+          <textarea id="fAddr" rows="2" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"></textarea>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">ลำดับการแสดง</label>
+          <input id="fOrder" type="number" min="0" value="0" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm">
+        </div>
+      </div>
+      <div class="border-t px-5 py-3 bg-slate-50 flex justify-end gap-2">
+        <button onclick="closeModal()" class="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-sm">ยกเลิก</button>
+        <button id="saveBtn" class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-sm font-medium">บันทึก</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/sidebar.js"></script>
+  <script>
+  let me = null;
+  let locations = [];
+  let editingId = null;
+
+  (async () => {
+    me = await setupAdminLayout('locations');
+    if (!me) return;
+    if (me.role !== 'admin') {
+      alert('หน้านี้สำหรับ Admin เท่านั้น');
+      window.location.href = 'dashboard.html';
+      return;
+    }
+    await loadLocations();
+  })();
+
+  async function loadLocations() {
+    const { data: locs } = await supabase.from('locations').select('*').order('display_order').order('created_at');
+    locations = locs || [];
+
+    const { data: stocks } = await supabase.from('product_stocks')
+      .select('location_id, current_stock, products(unit_cost, is_active)');
+    const statMap = {};
+    (stocks || []).forEach(s => {
+      if (!s.products?.is_active) return;
+      if (!statMap[s.location_id]) statMap[s.location_id] = { count: 0, value: 0, items: 0 };
+      if (Number(s.current_stock) > 0) statMap[s.location_id].count++;
+      statMap[s.location_id].items += Number(s.current_stock);
+      statMap[s.location_id].value += Number(s.current_stock) * Number(s.products.unit_cost || 0);
+    });
+
+    document.getElementById('locationCards').innerHTML = locations.map(l => {
+      const s = statMap[l.id] || { count: 0, value: 0, items: 0 };
+      const gradient = l.is_active ? 'from-blue-500 to-blue-700' : 'from-slate-400 to-slate-500';
+      return '<div class="bg-white rounded-2xl shadow-sm overflow-hidden ' + (l.is_active ? '' : 'opacity-60') + '">' +
+        '<div class="bg-gradient-to-br ' + gradient + ' text-white p-5">' +
+          '<div class="flex items-start justify-between">' +
+            '<div>' +
+              '<div class="text-xs opacity-80 font-mono">' + l.code + '</div>' +
+              '<div class="text-xl font-bold mt-1">' + l.name + '</div>' +
+              (l.description ? '<div class="text-xs opacity-80 mt-1">' + l.description + '</div>' : '') +
+            '</div>' +
+            '<span class="text-[10px] px-2 py-0.5 rounded-full ' + (l.is_active ? 'bg-white/30' : 'bg-red-200 text-red-900') + '">' +
+              (l.is_active ? '● ใช้งาน' : '○ ปิด') + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="p-4 grid grid-cols-3 gap-2 border-b text-center text-xs">' +
+          '<div><div class="text-slate-500">SKU ที่มี</div><div class="text-lg font-bold text-blue-700">' + s.count + '</div></div>' +
+          '<div><div class="text-slate-500">รวมจำนวน</div><div class="text-lg font-bold text-green-700">' + s.items.toLocaleString('th-TH', {maximumFractionDigits: 0}) + '</div></div>' +
+          '<div><div class="text-slate-500">มูลค่า</div><div class="text-lg font-bold text-amber-700">' + fmtCurrency(s.value) + '</div></div>' +
+        '</div>' +
+        (l.address ? '<div class="px-4 py-2 text-xs text-slate-600 border-b">📍 ' + l.address + '</div>' : '') +
+        '<div class="p-3 flex gap-2 justify-end">' +
+          '<button onclick="openEdit(' + l.id + ')" class="px-3 py-1.5 text-xs rounded-lg bg-slate-100 hover:bg-slate-200">✏️ แก้ไข</button>' +
+          (l.is_active
+            ? '<button onclick="toggleActive(' + l.id + ', false)" class="px-3 py-1.5 text-xs rounded-lg bg-red-100 text-red-700 hover:bg-red-200">🗑️ ปิด</button>'
+            : '<button onclick="toggleActive(' + l.id + ', true)" class="px-3 py-1.5 text-xs rounded-lg bg-green-100 text-green-700 hover:bg-green-200">♻ เปิด</button>') +
+        '</div>' +
+      '</div>';
+    }).join('') || '<div class="col-span-3 text-center text-slate-500 py-12">ยังไม่มี location</div>';
+  }
+
+  function openCreateModal() {
+    editingId = null;
+    document.getElementById('mTitle').textContent = '+ เพิ่มคลังใหม่';
+    ['fCode','fName','fDesc','fAddr'].forEach(i => document.getElementById(i).value = '');
+    document.getElementById('fOrder').value = String((locations.length || 0) + 1);
+    document.getElementById('modal').classList.remove('hidden');
+  }
+  window.openCreateModal = openCreateModal;
+
+  function openEdit(id) {
+    const l = locations.find(x => x.id === id);
+    if (!l) return;
+    editingId = id;
+    document.getElementById('mTitle').textContent = '✏️ แก้ไข: ' + l.code;
+    document.getElementById('fCode').value = l.code;
+    document.getElementById('fName').value = l.name;
+    document.getElementById('fDesc').value = l.description || '';
+    document.getElementById('fAddr').value = l.address || '';
+    document.getElementById('fOrder').value = l.display_order || 0;
+    document.getElementById('modal').classList.remove('hidden');
+  }
+  window.openEdit = openEdit;
+
+  function closeModal() { document.getElementById('modal').classList.add('hidden'); }
+  window.closeModal = closeModal;
+
+  async function toggleActive(id, newStatus) {
+    const action = newStatus ? 'เปิดใช้งาน' : 'ปิดใช้งาน';
+    if (!confirmDialog(action + 'คลังนี้?')) return;
+    const { error } = await supabase.from('locations').update({ is_active: newStatus, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) { toast('ผิดพลาด: ' + error.message, 'error'); return; }
+    toast(action + 'เรียบร้อย', 'success');
+    await loadLocations();
+  }
+  window.toggleActive = toggleActive;
+
+  document.getElementById('saveBtn').addEventListener('click', async () => {
+    const code = document.getElementById('fCode').value.trim().toUpperCase();
+    const name = document.getElementById('fName').value.trim();
+    if (!code || !name) { toast('กรุณากรอกรหัสและชื่อคลัง', 'warning'); return; }
+    if (!/^[A-Z0-9_]+$/.test(code)) { toast('รหัสใช้ A-Z 0-9 _ เท่านั้น', 'warning'); return; }
+
+    const btn = document.getElementById('saveBtn');
+    btn.disabled = true; btn.textContent = 'กำลังบันทึก...';
+    try {
+      const payload = {
+        code, name,
+        description: document.getElementById('fDesc').value.trim() || null,
+        address: document.getElementById('fAddr').value.trim() || null,
+        display_order: Number(document.getElementById('fOrder').value || 0),
+        updated_at: new Date().toISOString(),
+      };
+      if (editingId) {
+        const { error } = await supabase.from('locations').update(payload).eq('id', editingId);
+        if (error) throw error;
+        toast('บันทึกเรียบร้อย', 'success');
+      } else {
+        const { error } = await supabase.from('locations').insert(payload);
+        if (error) throw error;
+        toast('เพิ่มคลังเรียบร้อย — สินค้าทุกชิ้น seed stock = 0 ในคลังนี้อัตโนมัติ', 'success');
+      }
+      closeModal();
+      await loadLocations();
+    } catch (e) {
+      toast('ผิดพลาด: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = 'บันทึก';
+    }
+  });
+
+  supabase.channel('loc-rt')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'locations' }, () => loadLocations())
+    .subscribe();
+  </script>
+</body>
+</html>

@@ -1,6 +1,5 @@
 /**
  * Reusable sidebar / topbar component สำหรับหน้า Admin
- * เรียกใช้: <script src="js/sidebar.js"></script> แล้ว setupAdminLayout(activePage)
  */
 function renderAdminTopbar(activePage, currentRole) {
   activePage = activePage || '';
@@ -10,12 +9,13 @@ function renderAdminTopbar(activePage, currentRole) {
     { id: 'dashboard',   icon: '📊', label: 'Dashboard',  href: 'dashboard.html' },
     { id: 'approve',     icon: '✅', label: 'อนุมัติ',     href: 'approve.html' },
     { id: 'receive',     icon: '📥', label: 'รับเข้า',     href: 'receive.html' },
+    { id: 'transfer',    icon: '🔄', label: 'โอนคลัง',     href: 'transfer.html' },
     { id: 'products',    icon: '📦', label: 'สินค้า',      href: 'products.html' },
     { id: 'report',      icon: '📈', label: 'รายงาน',      href: 'report.html' },
   ];
 
-  // Users menu — เฉพาะ admin เท่านั้น
   if (currentRole === 'admin') {
+    baseItems.push({ id: 'locations', icon: '🏢', label: 'คลัง', href: 'locations.html' });
     baseItems.push({ id: 'users', icon: '👥', label: 'ผู้ใช้', href: 'users.html' });
   }
   baseItems.push({ id: 'requisition', icon: '🛒', label: 'หน้าผู้เบิก', href: 'requisition.html' });
