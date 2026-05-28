@@ -36,12 +36,13 @@
       </button>
     </div>
 
-    <!-- Location selector -->
     <div class="max-w-2xl mx-auto px-4 pb-2">
       <label class="block text-[10px] font-medium text-slate-600 mb-1">🏢 เบิกจากคลัง</label>
-      <select id="locationSel" class="w-full bg-blue-50 border-2 border-blue-300 px-4 py-2.5 rounded-2xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400">
-        <option value="">- เลือกคลัง -</option>
-      </select>
+      <div id="locationContainer">
+        <select id="locationSel" class="w-full bg-blue-50 border-2 border-blue-300 px-4 py-2.5 rounded-2xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <option value="">- เลือกคลัง -</option>
+        </select>
+      </div>
     </div>
 
     <div class="max-w-2xl mx-auto px-4 pb-3">
@@ -55,10 +56,9 @@
   </header>
 
   <main class="max-w-2xl mx-auto p-4">
-    <section id="needLocationHint" class="card p-8 text-center text-slate-500">
+    <section id="needLocationHint" class="card p-8 text-center text-slate-500 hidden">
       <div class="text-5xl mb-2">🏢</div>
-      <div class="font-medium">กรุณาเลือกคลังที่จะเบิกก่อน</div>
-      <div class="text-xs mt-1">เลือกจาก dropdown ด้านบน</div>
+      <div class="font-medium">กรุณาเลือกคลังที่จะเบิก</div>
     </section>
 
     <section id="productSection" class="hidden">
@@ -115,8 +115,9 @@
   <script>
   let me = null;
   let categories = [];
-  let stocks = [];        // v_stock_by_location rows สำหรับ location ที่เลือก
+  let stocks = [];
   let locations = [];
+  let userLocationIds = []; // location ids ที่ user มีสิทธิ
   let activeCategory = null;
   let activeLocationId = null;
   const cart = new Map();
@@ -130,7 +131,9 @@
       document.getElementById('adminBtn').addEventListener('click', () => location.href='dashboard.html');
     }
     await loadCategories();
+    await loadUserLocations();
     await loadLocations();
+    autoSelectLocation();
   })();
 
   async function loadCategories() {
@@ -138,16 +141,79 @@
     categories = data || [];
   }
 
-  async function loadLocations() {
-    const { data } = await supabase.from('locations').select('*').eq('is_active', true).order('display_order');
-    locations = data || [];
-    document.getElementById('locationSel').innerHTML = '<option value="">- เลือกคลัง -</option>' +
-      locations.map(l => '<option value="' + l.id + '">🏢 ' + l.name + ' (' + l.code + ')</option>').join('');
+  async function loadUserLocations() {
+    const { data } = await supabase.from('user_locations').select('location_id').eq('user_id', me.id);
+    userLocationIds = (data || []).map(r => r.location_id);
   }
 
-  document.getElementById('locationSel').addEventListener('change', async (e) => {
-    const v = e.target.value;
-    activeLocationId = v ? Number(v) : null;
+  async function loadLocations() {
+    const { data } = await supabase.from('locations').select('*').eq('is_active', true).order('display_order');
+    let avail = data || [];
+    // ถ้า user มี mapping → filter เฉพาะ location ที่ map
+    if (userLocationIds.length > 0) {
+      avail = avail.filter(l => userLocationIds.includes(l.id));
+    }
+    locations = avail;
+  }
+
+  // Auto-select location:
+  // 1. ถ้ามี mapping 1 ตัว → ใช้ตัวนั้น + lock
+  // 2. ถ้าไม่มี mapping → default = WAREHOUSE (ถ้ามี) → lock สำหรับ staff
+  // 3. ถ้ามี mapping หลายตัว หรือ admin/manager → ให้เลือกได้
+  function autoSelectLocation() {
+    const isStaff = me.role === 'staff';
+    const isAdmin = ['admin','manager'].includes(me.role);
+
+    let defaultLoc = null;
+    let shouldLock = false;
+
+    if (locations.length === 0) {
+      // No accessible location — show error
+      document.getElementById('locationContainer').innerHTML =
+        '<div class="bg-red-50 border-2 border-red-200 px-4 py-2.5 rounded-2xl text-sm font-medium text-red-700">⚠ คุณยังไม่มีสิทธิเข้าถึงคลังใด ติดต่อ admin</div>';
+      return;
+    }
+
+    if (locations.length === 1) {
+      defaultLoc = locations[0];
+      shouldLock = true;
+    } else if (isStaff) {
+      // Staff: default Warehouse (ถ้ามี) + lock
+      const wh = locations.find(l => l.code === 'WAREHOUSE');
+      defaultLoc = wh || locations[0];
+      shouldLock = true;
+    } else {
+      // Admin/Manager หลาย location: ให้เลือก, default Warehouse
+      const wh = locations.find(l => l.code === 'WAREHOUSE');
+      defaultLoc = wh || locations[0];
+      shouldLock = false;
+    }
+
+    // Render selector
+    const opts = locations.map(l =>
+      '<option value="' + l.id + '" ' + (l.id === defaultLoc.id ? 'selected' : '') + '>🏢 ' + l.name + ' (' + l.code + ')</option>'
+    ).join('');
+
+    if (shouldLock) {
+      // Read-only display
+      document.getElementById('locationContainer').innerHTML =
+        '<div class="bg-blue-50 border-2 border-blue-300 px-4 py-2.5 rounded-2xl text-sm font-semibold flex items-center justify-between">' +
+          '<span>🏢 ' + defaultLoc.name + ' (' + defaultLoc.code + ')</span>' +
+          '<span class="text-[10px] bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full">🔒 ระบบกำหนด</span>' +
+        '</div>';
+    } else {
+      document.getElementById('locationContainer').innerHTML =
+        '<select id="locationSel" class="w-full bg-blue-50 border-2 border-blue-300 px-4 py-2.5 rounded-2xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400">' + opts + '</select>';
+      document.getElementById('locationSel').addEventListener('change', (e) => {
+        const v = e.target.value;
+        setActiveLocation(v ? Number(v) : null);
+      });
+    }
+    setActiveLocation(defaultLoc.id);
+  }
+
+  async function setActiveLocation(locId) {
+    activeLocationId = locId;
     cart.clear();
     refreshCart();
     if (!activeLocationId) {
@@ -163,13 +229,10 @@
     await loadStocks();
     renderCategoryChips();
     renderProducts();
-  });
+  }
 
   async function loadStocks() {
-    const { data } = await supabase.from('v_stock_by_location')
-      .select('*')
-      .eq('location_id', activeLocationId)
-      .order('name');
+    const { data } = await supabase.from('v_stock_by_location').select('*').eq('location_id', activeLocationId).order('name');
     stocks = data || [];
   }
 
@@ -180,8 +243,7 @@
       const cid = c.id ?? '';
       const active = activeCategory === c.id;
       const cls = active ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200';
-      return '<button data-cat="' + cid + '" class="cat-chip whitespace-nowrap px-4 py-1.5 rounded-full text-sm font-medium border transition ' + cls + '">' +
-             (c.icon || '') + ' ' + c.name + '</button>';
+      return '<button data-cat="' + cid + '" class="cat-chip whitespace-nowrap px-4 py-1.5 rounded-full text-sm font-medium border ' + cls + '">' + (c.icon || '') + ' ' + c.name + '</button>';
     }).join('');
     el.querySelectorAll('.cat-chip').forEach(b => b.addEventListener('click', () => {
       const v = b.getAttribute('data-cat');
@@ -193,15 +255,12 @@
   function renderProducts() {
     const term = (document.getElementById('searchInput').value || '').toLowerCase().trim();
     let list = stocks;
-    // ดึง category_id จาก stocks เพื่อ filter — v_stock_by_location ไม่มี category_id โดยตรง ใช้ category_name + sku prefix
     if (activeCategory) {
       const cat = categories.find(c => c.id === activeCategory);
       if (cat) list = list.filter(p => p.category_code === cat.code);
     }
     if (term) list = list.filter(p =>
-      (p.name||'').toLowerCase().includes(term) ||
-      (p.sku||'').toLowerCase().includes(term)
-    );
+      (p.name||'').toLowerCase().includes(term) || (p.sku||'').toLowerCase().includes(term));
 
     const el = document.getElementById('productList');
     document.getElementById('emptyState').classList.toggle('hidden', list.length > 0);
@@ -211,27 +270,22 @@
       const low = !out && Number(p.current_stock) <= Number(p.min_stock);
       return '<div class="card p-3 flex gap-3 items-center">' +
         '<div class="w-16 h-16 bg-slate-100 rounded-xl overflow-hidden flex items-center justify-center text-3xl flex-shrink-0">' +
-          (p.image_url ? '<img src="' + p.image_url + '" class="w-full h-full object-cover">' : '📦') +
-        '</div>' +
+          (p.image_url ? '<img src="' + p.image_url + '" class="w-full h-full object-cover">' : '📦') + '</div>' +
         '<div class="flex-1 min-w-0">' +
           '<div class="font-medium text-slate-900 text-sm line-clamp-1">' + p.name + '</div>' +
           '<div class="text-xs text-slate-500">' + p.sku + ' · ต่อ' + p.unit + '</div>' +
           '<div class="text-xs mt-1 flex items-center gap-2">' +
-            '<span class="' + (out ? 'text-red-600 font-bold' : low ? 'text-amber-600 font-semibold' : 'text-slate-600') + '">' +
-              'คงเหลือ ' + Number(p.current_stock) + ' ' + p.unit +
-            '</span>' +
+            '<span class="' + (out ? 'text-red-600 font-bold' : low ? 'text-amber-600 font-semibold' : 'text-slate-600') + '">คงเหลือ ' + Number(p.current_stock) + ' ' + p.unit + '</span>' +
             (out ? '<span class="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded">หมด</span>' : '') +
             (!out && low ? '<span class="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">ใกล้หมด</span>' : '') +
-          '</div>' +
-        '</div>' +
+          '</div></div>' +
         '<div class="flex items-center gap-1">' +
           (inCart
             ? '<button onclick="changeQty(' + p.product_id + ', -1)" class="w-9 h-9 rounded-full bg-slate-100 text-slate-700 font-bold">-</button>' +
               '<span class="w-8 text-center font-bold">' + inCart.qty + '</span>' +
               '<button onclick="changeQty(' + p.product_id + ', 1)" class="w-9 h-9 rounded-full bg-blue-600 text-white font-bold" ' + (inCart.qty >= p.current_stock ? 'disabled' : '') + '>+</button>'
             : '<button onclick="quickAdd(' + p.product_id + ')" ' + (out ? 'disabled' : '') + ' class="w-9 h-9 rounded-full bg-blue-600 text-white font-bold shadow disabled:opacity-30">+</button>') +
-        '</div>' +
-      '</div>';
+        '</div></div>';
     }).join('');
   }
 
@@ -240,12 +294,8 @@
     if (!p) return;
     if (Number(p.current_stock) <= 0) { toast('สินค้าหมดในคลังนี้', 'error'); return; }
     const cur = cart.get(productId);
-    if (cur) {
-      if (cur.qty < p.current_stock) cur.qty += 1;
-      else { toast('เกินจำนวนคงเหลือ', 'warning'); return; }
-    } else {
-      cart.set(productId, { product: p, qty: 1 });
-    }
+    if (cur) { if (cur.qty < p.current_stock) cur.qty += 1; else { toast('เกินจำนวนคงเหลือ', 'warning'); return; } }
+    else cart.set(productId, { product: p, qty: 1 });
     refreshCart(); renderProducts();
   }
   window.quickAdd = quickAdd;
@@ -265,41 +315,27 @@
     const count = cart.size;
     const totalQty = Array.from(cart.values()).reduce((s, x) => s + x.qty, 0);
     const btn = document.getElementById('cartBtn');
-    const label = document.getElementById('cartLabel');
-    if (count > 0) {
-      btn.classList.remove('hidden');
-      label.textContent = 'ตะกร้า (' + count + ' · ' + totalQty + ')';
-    } else {
-      btn.classList.add('hidden'); closeCart();
-    }
+    if (count > 0) { btn.classList.remove('hidden'); document.getElementById('cartLabel').textContent = 'ตะกร้า (' + count + ' · ' + totalQty + ')'; }
+    else { btn.classList.add('hidden'); closeCart(); }
     const items = document.getElementById('cartItems');
-    if (count === 0) {
-      items.innerHTML = '<p class="text-center text-slate-500 py-8">ยังไม่มีสินค้าในตะกร้า</p>';
-    } else {
-      items.innerHTML = Array.from(cart.values()).map(({ product: p, qty }) =>
-        '<div class="flex items-center gap-3">' +
-          '<div class="w-12 h-12 bg-slate-100 rounded-lg overflow-hidden flex items-center justify-center text-xl">' +
-            (p.image_url ? '<img src="' + p.image_url + '" class="w-full h-full object-cover">' : '📦') +
-          '</div>' +
-          '<div class="flex-1 min-w-0">' +
-            '<div class="font-medium text-sm line-clamp-1">' + p.name + '</div>' +
-            '<div class="text-xs text-slate-500">' + p.sku + ' · ' + p.unit + '</div>' +
-          '</div>' +
-          '<div class="flex items-center gap-1">' +
-            '<button onclick="changeQty(' + p.product_id + ', -1)" class="w-8 h-8 rounded-full bg-slate-100 font-bold">-</button>' +
-            '<span class="w-7 text-center font-bold text-sm">' + qty + '</span>' +
-            '<button onclick="changeQty(' + p.product_id + ', 1)" class="w-8 h-8 rounded-full bg-blue-600 text-white font-bold" ' + (qty >= p.current_stock ? 'disabled' : '') + '>+</button>' +
-          '</div>' +
-        '</div>'
-      ).join('');
-    }
+    if (count === 0) items.innerHTML = '<p class="text-center text-slate-500 py-8">ยังไม่มีสินค้าในตะกร้า</p>';
+    else items.innerHTML = Array.from(cart.values()).map(({ product: p, qty }) =>
+      '<div class="flex items-center gap-3">' +
+        '<div class="w-12 h-12 bg-slate-100 rounded-lg overflow-hidden flex items-center justify-center text-xl">' +
+          (p.image_url ? '<img src="' + p.image_url + '" class="w-full h-full object-cover">' : '📦') + '</div>' +
+        '<div class="flex-1 min-w-0">' +
+          '<div class="font-medium text-sm line-clamp-1">' + p.name + '</div>' +
+          '<div class="text-xs text-slate-500">' + p.sku + ' · ' + p.unit + '</div></div>' +
+        '<div class="flex items-center gap-1">' +
+          '<button onclick="changeQty(' + p.product_id + ', -1)" class="w-8 h-8 rounded-full bg-slate-100 font-bold">-</button>' +
+          '<span class="w-7 text-center font-bold text-sm">' + qty + '</span>' +
+          '<button onclick="changeQty(' + p.product_id + ', 1)" class="w-8 h-8 rounded-full bg-blue-600 text-white font-bold" ' + (qty >= p.current_stock ? 'disabled' : '') + '>+</button>' +
+        '</div></div>').join('');
     document.getElementById('cartTotalItems').textContent = count + ' รายการ · ' + totalQty + ' ชิ้น';
     document.getElementById('submitReqBtn').disabled = count === 0;
   }
 
-  document.getElementById('cartBtn').addEventListener('click', () => {
-    document.getElementById('cartSheet').classList.remove('hidden');
-  });
+  document.getElementById('cartBtn').addEventListener('click', () => document.getElementById('cartSheet').classList.remove('hidden'));
   function closeCart() { document.getElementById('cartSheet').classList.add('hidden'); }
   window.closeCart = closeCart;
 
@@ -308,73 +344,58 @@
     const purpose = document.getElementById('cartPurpose').value.trim();
     const locName = locations.find(l => l.id === activeLocationId)?.name || '';
     if (!confirmDialog('ยืนยันส่งใบเบิก ' + cart.size + ' รายการ จากคลัง "' + locName + '"?')) return;
-
     const btn = document.getElementById('submitReqBtn');
     btn.disabled = true; btn.textContent = 'กำลังส่ง...';
     try {
       const { data: req, error: reqErr } = await supabase.from('requisitions').insert({
-        requested_by: me.id,
-        department: me.department,
-        purpose: purpose || null,
-        total_items: cart.size,
+        requested_by: me.id, department: me.department,
+        purpose: purpose || null, total_items: cart.size,
         location_id: activeLocationId,
       }).select().single();
       if (reqErr) throw reqErr;
-
       const items = Array.from(cart.values()).map(({ product, qty }) => ({
         requisition_id: req.id, product_id: product.product_id,
         quantity_requested: qty, unit: product.unit,
       }));
       const { error: itemErr } = await supabase.from('requisition_items').insert(items);
       if (itemErr) throw itemErr;
-
-      toast('ส่งใบเบิก ' + req.req_no + ' แล้ว รออนุมัติ', 'success');
+      toast('ส่งใบเบิก ' + req.req_no + ' แล้ว', 'success');
       cart.clear(); refreshCart(); renderProducts();
       document.getElementById('cartPurpose').value = '';
-    } catch (e) {
-      console.error(e);
-      toast('เกิดข้อผิดพลาด: ' + (e.message || ''), 'error');
-    } finally {
-      btn.disabled = false; btn.textContent = 'ส่งใบเบิก';
-    }
+    } catch (e) { toast('ผิดพลาด: ' + (e.message || ''), 'error'); }
+    finally { btn.disabled = false; btn.textContent = 'ส่งใบเบิก'; }
   });
 
   document.getElementById('historyBtn').addEventListener('click', async () => {
     document.getElementById('historySheet').classList.remove('hidden');
     const { data } = await supabase.from('requisitions')
       .select('id, req_no, status, purpose, created_at, locations(name), requisition_items(quantity_requested, products(name, sku))')
-      .eq('requested_by', me.id)
-      .order('created_at', { ascending: false }).limit(50);
+      .eq('requested_by', me.id).order('created_at', { ascending: false }).limit(50);
     renderHistory(data || []);
   });
   function closeHistory() { document.getElementById('historySheet').classList.add('hidden'); }
   window.closeHistory = closeHistory;
 
   const statusBadge = {
-    pending:   { color: 'bg-amber-100 text-amber-700',  text: 'รออนุมัติ' },
-    approved:  { color: 'bg-blue-100 text-blue-700',    text: 'อนุมัติแล้ว' },
-    issued:    { color: 'bg-green-100 text-green-700',  text: 'จ่ายแล้ว' },
-    rejected:  { color: 'bg-red-100 text-red-700',      text: 'ไม่อนุมัติ' },
-    cancelled: { color: 'bg-slate-100 text-slate-600',  text: 'ยกเลิก' },
+    pending: { color: 'bg-amber-100 text-amber-700', text: 'รออนุมัติ' },
+    approved: { color: 'bg-blue-100 text-blue-700', text: 'อนุมัติแล้ว' },
+    issued: { color: 'bg-green-100 text-green-700', text: 'จ่ายแล้ว' },
+    rejected: { color: 'bg-red-100 text-red-700', text: 'ไม่อนุมัติ' },
+    cancelled: { color: 'bg-slate-100 text-slate-600', text: 'ยกเลิก' },
   };
   function renderHistory(list) {
     const el = document.getElementById('historyList');
-    if (!list.length) {
-      el.innerHTML = '<p class="text-center text-slate-500 py-8">ยังไม่มีประวัติการเบิก</p>';
-      return;
-    }
+    if (!list.length) { el.innerHTML = '<p class="text-center text-slate-500 py-8">ยังไม่มีประวัติ</p>'; return; }
     el.innerHTML = list.map(r => {
       const sb = statusBadge[r.status] || { color: 'bg-slate-100', text: r.status };
       const items = (r.requisition_items || []).map(i => i.products?.name + ' × ' + i.quantity_requested).join(', ');
       return '<div class="card p-3">' +
         '<div class="flex justify-between items-start mb-1">' +
           '<div class="font-mono text-sm font-semibold">' + r.req_no + '</div>' +
-          '<span class="text-xs px-2 py-0.5 rounded-full ' + sb.color + '">' + sb.text + '</span>' +
-        '</div>' +
+          '<span class="text-xs px-2 py-0.5 rounded-full ' + sb.color + '">' + sb.text + '</span></div>' +
         '<div class="text-xs text-slate-500 mb-1">' + fmtDate(r.created_at) + (r.locations?.name ? ' · 🏢 ' + r.locations.name : '') + '</div>' +
         (r.purpose ? '<div class="text-xs text-slate-600 mb-1">📝 ' + r.purpose + '</div>' : '') +
-        '<div class="text-xs text-slate-700 line-clamp-2">' + items + '</div>' +
-      '</div>';
+        '<div class="text-xs text-slate-700 line-clamp-2">' + items + '</div></div>';
     }).join('');
   }
 
