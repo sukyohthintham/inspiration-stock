@@ -256,11 +256,11 @@
       const rowCls = p.is_active ? '' : 'opacity-40';
 
       return '<tr class="hover:bg-slate-50 ' + rowCls + '">' +
-        '<td class="p-2"><div class="w-10 h-10 bg-slate-100 rounded overflow-hidden flex items-center justify-center text-xl">' +
+        '<td class="p-2"><div onclick="openImgModal(\'' + (p.image_url || '') + '\')" class="w-10 h-10 bg-slate-100 rounded overflow-hidden flex items-center justify-center text-xl cursor-pointer hover:ring-2 hover:ring-blue-400">' +
           (p.image_url ? '<img src="' + p.image_url + '" class="w-full h-full object-cover">' : '📦') +
         '</div></td>' +
         '<td class="p-2"><span class="font-mono text-xs bg-slate-100 px-2 py-1 rounded">' + p.sku + '</span></td>' +
-        '<td class="p-2"><div class="font-medium text-sm">' + p.name + '</div>' +
+        '<td class="p-2"><div onclick="openDetailModal(' + p.id + ')" class="font-medium text-sm text-blue-700 hover:underline cursor-pointer">' + p.name + '</div>' +
           (p.description ? '<div class="text-[10px] text-slate-500">' + p.description + '</div>' : '') + '</td>' +
         '<td class="p-2 text-sm">' + (p.categories?.icon || '') + ' ' + (p.categories?.name || '-') + '</td>' +
         '<td class="p-2 text-center text-sm">' + p.unit + '</td>' +
@@ -561,5 +561,27 @@
     btn.disabled = false; btn.textContent = 'ยืนยันนำเข้า';
   });
   </script>
+
+  <!-- IMAGE LIGHTBOX -->
+  <div id="imgModal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/80 cursor-pointer" onclick="closeImgModal()">
+    <button class="absolute top-4 right-4 text-white text-4xl hover:text-gray-300">✕</button>
+    <img id="imgModalImg" src="" class="max-w-[95vw] max-h-[90vh] rounded-lg shadow-2xl object-contain">
+  </div>
+
+  <!-- DETAIL MODAL -->
+  <div id="detailModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/50" onclick="closeDetailModal()"></div>
+    <div class="absolute inset-x-4 top-6 bottom-6 max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div class="px-5 py-3 border-b flex items-center justify-between bg-slate-50">
+        <div>
+          <div id="dmTitle" class="font-bold text-lg">-</div>
+          <div id="dmSku" class="text-xs text-slate-500 font-mono">-</div>
+        </div>
+        <button onclick="closeDetailModal()" class="text-slate-400 hover:text-slate-700 text-xl">✕</button>
+      </div>
+      <div id="dmBody" class="flex-1 overflow-y-auto p-5 space-y-4">โหลด...</div>
+    </div>
+  </div>
+
 </body>
 </html>
