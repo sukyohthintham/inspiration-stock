@@ -16,28 +16,23 @@
       <h1 class="text-2xl font-bold text-slate-900">จัดการสินค้า 📦</h1>
       <div class="flex gap-2 flex-wrap">
         <button onclick="downloadTemplate()" class="px-3 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200 text-sm">📋 Template</button>
-        <button onclick="exportCSV()" class="px-3 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 text-sm">📤 Export CSV</button>
-        <label class="px-3 py-2 bg-amber-600 text-white rounded-lg font-medium hover:bg-amber-700 text-sm cursor-pointer">
-          📥 Import CSV
+        <button onclick="exportCSV()" class="px-3 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 text-sm">📤 Export</button>
+        <label class="px-3 py-2 bg-amber-600 text-white rounded-lg font-medium hover:bg-amber-700 text-sm cursor-pointer">📥 Import
           <input type="file" id="importFile" accept=".csv,.txt" class="hidden">
         </label>
-        <button onclick="openCreateModal()" class="px-3 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 text-sm">+ เพิ่มสินค้า</button>
+        <button onclick="openCreateModal()" class="px-3 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 text-sm">+ เพิ่ม</button>
         <button onclick="deleteAllConfirm()" class="px-3 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 text-sm">🗑️ ลบทั้งหมด</button>
       </div>
     </div>
-    <p class="text-sm text-slate-500 mb-6">Master ข้อมูลสินค้าทั้งหมด · รหัสสร้างอัตโนมัติตามหมวด · การลบใช้แบบ Soft Delete (ปิดใช้งาน) รักษาประวัติเดิม</p>
+    <p class="text-sm text-slate-500 mb-6">Master ข้อมูลสินค้า · คอลัมน์ "Stock" แสดงแยกตามคลัง</p>
 
-    <!-- Filters -->
     <div class="bg-white rounded-2xl p-4 shadow-sm mb-4 flex flex-wrap gap-3 items-center">
       <input id="searchInput" type="text" placeholder="🔍 ค้นหาสินค้า/รหัส..." class="flex-1 min-w-[200px] px-4 py-2 border border-slate-200 rounded-lg text-sm">
       <select id="catFilter" class="px-3 py-2 border border-slate-200 rounded-lg text-sm">
         <option value="">ทุกหมวด</option>
       </select>
-      <select id="stockFilter" class="px-3 py-2 border border-slate-200 rounded-lg text-sm">
-        <option value="">ทุกสถานะสต๊อก</option>
-        <option value="out">หมด</option>
-        <option value="low">ใกล้หมด</option>
-        <option value="ok">ปกติ</option>
+      <select id="locFilter" class="px-3 py-2 border-2 border-blue-300 rounded-lg text-sm font-medium bg-blue-50">
+        <option value="">ทุกคลัง (สรุปรวม)</option>
       </select>
       <select id="activeFilter" class="px-3 py-2 border border-slate-200 rounded-lg text-sm">
         <option value="active">ใช้งานอยู่</option>
@@ -57,10 +52,10 @@
               <th class="text-left p-3">ชื่อสินค้า</th>
               <th class="text-left p-3">หมวด</th>
               <th class="text-center p-3">หน่วย</th>
-              <th class="text-center p-3">คงเหลือ</th>
+              <th class="text-center p-3">Stock (แยกคลัง)</th>
+              <th class="text-center p-3">รวม</th>
               <th class="text-center p-3">Min/Max</th>
               <th class="text-right p-3">ต้นทุน</th>
-              <th class="text-center p-3">สถานะ</th>
               <th class="p-3"></th>
             </tr>
           </thead>
@@ -70,7 +65,7 @@
     </div>
   </main>
 
-  <!-- Modal เพิ่ม/แก้ไข -->
+  <!-- Create/Edit Modal -->
   <div id="modal" class="fixed inset-0 z-50 hidden">
     <div class="absolute inset-0 bg-black/50" onclick="closeModal()"></div>
     <div class="absolute inset-x-4 top-10 max-w-2xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
@@ -80,46 +75,28 @@
       </div>
       <div class="p-5 overflow-y-auto space-y-3">
         <div class="grid grid-cols-2 gap-3">
-          <div class="col-span-2">
-            <label class="block text-xs font-medium text-slate-600 mb-1">ชื่อสินค้า *</label>
-            <input id="fName" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" required>
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">หมวด *</label>
-            <select id="fCategory" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"></select>
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">หน่วย *</label>
-            <input id="fUnit" type="text" placeholder="ชิ้น / ด้าม / กล่อง" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm">
-          </div>
-          <div class="col-span-2">
-            <label class="block text-xs font-medium text-slate-600 mb-1">รายละเอียด</label>
-            <input id="fDesc" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm">
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">จุดสั่งซื้อ (Min)</label>
-            <input id="fMin" type="number" min="0" step="0.01" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm">
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">สต๊อกสูงสุด (Max)</label>
-            <input id="fMax" type="number" min="0" step="0.01" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm">
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">ต้นทุน/หน่วย</label>
-            <input id="fCost" type="number" min="0" step="0.01" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm">
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">Supplier หลัก</label>
+          <div class="col-span-2"><label class="block text-xs font-medium text-slate-600 mb-1">ชื่อสินค้า *</label>
+            <input id="fName" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"></div>
+          <div><label class="block text-xs font-medium text-slate-600 mb-1">หมวด *</label>
+            <select id="fCategory" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"></select></div>
+          <div><label class="block text-xs font-medium text-slate-600 mb-1">หน่วย *</label>
+            <input id="fUnit" type="text" placeholder="ชิ้น / ด้าม" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"></div>
+          <div class="col-span-2"><label class="block text-xs font-medium text-slate-600 mb-1">รายละเอียด</label>
+            <input id="fDesc" type="text" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"></div>
+          <div><label class="block text-xs font-medium text-slate-600 mb-1">Min</label>
+            <input id="fMin" type="number" min="0" step="0.01" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"></div>
+          <div><label class="block text-xs font-medium text-slate-600 mb-1">Max</label>
+            <input id="fMax" type="number" min="0" step="0.01" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"></div>
+          <div><label class="block text-xs font-medium text-slate-600 mb-1">ต้นทุน/หน่วย</label>
+            <input id="fCost" type="number" min="0" step="0.01" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"></div>
+          <div><label class="block text-xs font-medium text-slate-600 mb-1">Supplier หลัก</label>
             <select id="fSupplier" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm">
               <option value="">- ไม่ระบุ -</option>
-            </select>
-          </div>
-          <div class="col-span-2">
-            <label class="block text-xs font-medium text-slate-600 mb-1">รูปสินค้า (URL หรืออัปโหลด)</label>
+            </select></div>
+          <div class="col-span-2"><label class="block text-xs font-medium text-slate-600 mb-1">รูปสินค้า (URL หรืออัปโหลด)</label>
             <input id="fImageUrl" type="text" placeholder="https://..." class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm mb-2">
             <input id="fImageFile" type="file" accept="image/*" class="text-sm">
-            <img id="fImagePreview" class="mt-2 max-h-32 rounded-lg border hidden">
-          </div>
+            <img id="fImagePreview" class="mt-2 max-h-32 rounded-lg border hidden"></div>
         </div>
       </div>
       <div class="border-t px-5 py-3 bg-slate-50 flex justify-end gap-2">
@@ -155,6 +132,8 @@
   let products = [];
   let categories = [];
   let suppliers = [];
+  let locations = [];
+  let stocksByProduct = {}; // product_id -> { location_code -> qty }
   let editingId = null;
   let importRows = [];
 
@@ -163,6 +142,7 @@
     if (!me) return;
     await loadCategories();
     await loadSuppliers();
+    await loadLocations();
     await loadProducts();
     document.getElementById('importFile').addEventListener('change', handleImportFile);
   })();
@@ -174,66 +154,97 @@
     document.getElementById('catFilter').innerHTML = '<option value="">ทุกหมวด</option>' + opts;
     document.getElementById('fCategory').innerHTML = opts;
   }
+
   async function loadSuppliers() {
     const { data } = await supabase.from('suppliers').select('*').eq('is_active', true).order('name');
     suppliers = data || [];
     document.getElementById('fSupplier').innerHTML = '<option value="">- ไม่ระบุ -</option>' +
       suppliers.map(s => '<option value="' + s.id + '">' + s.name + '</option>').join('');
   }
+
+  async function loadLocations() {
+    const { data } = await supabase.from('locations').select('*').eq('is_active', true).order('display_order');
+    locations = data || [];
+    document.getElementById('locFilter').innerHTML = '<option value="">ทุกคลัง (สรุปรวม)</option>' +
+      locations.map(l => '<option value="' + l.id + '">🏢 ' + l.name + '</option>').join('');
+  }
+
   async function loadProducts() {
-    const { data } = await supabase.from('products')
+    const { data: prods } = await supabase.from('products')
       .select('*, categories(name, icon, code), suppliers:preferred_supplier_id(name)')
       .order('sku');
-    products = data || [];
+    products = prods || [];
+
+    const { data: stockRows } = await supabase.from('product_stocks')
+      .select('product_id, current_stock, locations(id, code, name)');
+    stocksByProduct = {};
+    (stockRows || []).forEach(s => {
+      if (!s.locations) return;
+      if (!stocksByProduct[s.product_id]) stocksByProduct[s.product_id] = {};
+      stocksByProduct[s.product_id][s.locations.code] = {
+        qty: Number(s.current_stock),
+        name: s.locations.name,
+        id: s.locations.id,
+      };
+    });
     renderTable();
   }
 
   function renderTable() {
     const term = (document.getElementById('searchInput').value || '').toLowerCase();
     const cat = document.getElementById('catFilter').value;
-    const st = document.getElementById('stockFilter').value;
+    const locId = document.getElementById('locFilter').value;
     const act = document.getElementById('activeFilter').value;
 
     let list = products;
     if (act === 'active')   list = list.filter(p => p.is_active);
     if (act === 'inactive') list = list.filter(p => !p.is_active);
     if (term) list = list.filter(p =>
-      (p.name || '').toLowerCase().includes(term) ||
-      (p.sku || '').toLowerCase().includes(term)
-    );
+      (p.name||'').toLowerCase().includes(term) || (p.sku||'').toLowerCase().includes(term));
     if (cat) list = list.filter(p => p.category_id === Number(cat));
-    if (st === 'out') list = list.filter(p => Number(p.current_stock) <= 0);
-    if (st === 'low') list = list.filter(p => Number(p.current_stock) > 0 && Number(p.current_stock) <= Number(p.min_stock));
-    if (st === 'ok')  list = list.filter(p => Number(p.current_stock) > Number(p.min_stock));
 
     document.getElementById('totalCount').textContent = list.length + ' รายการ';
 
     document.getElementById('prodBody').innerHTML = list.map(p => {
-      const out = Number(p.current_stock) <= 0;
-      const low = !out && Number(p.current_stock) <= Number(p.min_stock);
-      const rowClass = p.is_active ? '' : 'opacity-40';
-      return '<tr class="hover:bg-slate-50 ' + rowClass + '">' +
-        '<td class="p-2">' +
-          '<div class="w-10 h-10 bg-slate-100 rounded overflow-hidden flex items-center justify-center text-xl">' +
-            (p.image_url ? '<img src="' + p.image_url + '" class="w-full h-full object-cover">' : '📦') +
-          '</div>' +
-        '</td>' +
+      const stockMap = stocksByProduct[p.id] || {};
+      // ถ้าเลือก location → แสดงเฉพาะ location นั้น
+      let displayQty;
+      let breakdownHTML;
+      if (locId) {
+        const loc = locations.find(l => l.id === Number(locId));
+        const s = stockMap[loc?.code];
+        displayQty = s ? s.qty : 0;
+        breakdownHTML = '<span class="font-mono">🏢 ' + (loc?.name || '-') + '</span>';
+      } else {
+        const parts = locations.map(l => {
+          const s = stockMap[l.code];
+          const qty = s ? s.qty : 0;
+          const cls = qty <= 0 ? 'text-slate-400' : qty <= p.min_stock ? 'text-amber-600' : 'text-slate-700';
+          return '<span class="text-[10px]"><span class="text-slate-500">' + l.code + ':</span> <span class="' + cls + ' font-semibold">' + qty + '</span></span>';
+        });
+        breakdownHTML = '<div class="flex flex-col gap-0.5 text-xs">' + parts.join('') + '</div>';
+        displayQty = Number(p.current_stock);
+      }
+
+      const out = displayQty <= 0;
+      const low = !out && displayQty <= Number(p.min_stock);
+      const rowCls = p.is_active ? '' : 'opacity-40';
+
+      return '<tr class="hover:bg-slate-50 ' + rowCls + '">' +
+        '<td class="p-2"><div class="w-10 h-10 bg-slate-100 rounded overflow-hidden flex items-center justify-center text-xl">' +
+          (p.image_url ? '<img src="' + p.image_url + '" class="w-full h-full object-cover">' : '📦') +
+        '</div></td>' +
         '<td class="p-2"><span class="font-mono text-xs bg-slate-100 px-2 py-1 rounded">' + p.sku + '</span></td>' +
         '<td class="p-2"><div class="font-medium text-sm">' + p.name + '</div>' +
           (p.description ? '<div class="text-[10px] text-slate-500">' + p.description + '</div>' : '') + '</td>' +
         '<td class="p-2 text-sm">' + (p.categories?.icon || '') + ' ' + (p.categories?.name || '-') + '</td>' +
         '<td class="p-2 text-center text-sm">' + p.unit + '</td>' +
-        '<td class="p-2 text-center ' + (out ? 'text-red-600 font-bold' : low ? 'text-amber-600 font-semibold' : '') + '">' +
-          Number(p.current_stock) +
-          (out ? '<span class="block text-[10px]">หมด</span>' : low ? '<span class="block text-[10px]">ใกล้หมด</span>' : '') +
+        '<td class="p-2">' + breakdownHTML + '</td>' +
+        '<td class="p-2 text-center ' + (out ? 'text-red-600 font-bold' : low ? 'text-amber-600 font-semibold' : 'text-slate-700 font-bold') + '">' +
+          displayQty + (out ? '<span class="block text-[10px]">หมด</span>' : low ? '<span class="block text-[10px]">ใกล้หมด</span>' : '') +
         '</td>' +
         '<td class="p-2 text-center text-xs text-slate-600">' + Number(p.min_stock) + '/' + Number(p.max_stock) + '</td>' +
         '<td class="p-2 text-right text-sm">' + fmtCurrency(p.unit_cost) + '</td>' +
-        '<td class="p-2 text-center">' +
-          (p.is_active
-            ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">● ใช้งาน</span>'
-            : '<span class="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700">○ ปิด</span>') +
-        '</td>' +
         '<td class="p-2 whitespace-nowrap">' +
           '<button onclick="openEdit(' + p.id + ')" class="text-blue-600 text-sm hover:underline mr-2">แก้ไข</button>' +
           (p.is_active
@@ -244,12 +255,11 @@
     }).join('') || '<tr><td colspan="10" class="text-center text-slate-400 p-4">ไม่พบสินค้า</td></tr>';
   }
 
-  document.getElementById('searchInput').addEventListener('input', renderTable);
-  document.getElementById('catFilter').addEventListener('change', renderTable);
-  document.getElementById('stockFilter').addEventListener('change', renderTable);
-  document.getElementById('activeFilter').addEventListener('change', renderTable);
+  ['searchInput','catFilter','locFilter','activeFilter'].forEach(id => {
+    document.getElementById(id).addEventListener(id === 'searchInput' ? 'input' : 'change', renderTable);
+  });
 
-  // ============ CREATE / EDIT ============
+  // --- CREATE / EDIT ---
   function openCreateModal() {
     editingId = null;
     document.getElementById('mTitle').textContent = '+ เพิ่มสินค้าใหม่';
@@ -283,9 +293,7 @@
     if (p.image_url) {
       document.getElementById('fImagePreview').src = p.image_url;
       document.getElementById('fImagePreview').classList.remove('hidden');
-    } else {
-      document.getElementById('fImagePreview').classList.add('hidden');
-    }
+    } else { document.getElementById('fImagePreview').classList.add('hidden'); }
     document.getElementById('modal').classList.remove('hidden');
   }
   window.openEdit = openEdit;
@@ -312,15 +320,12 @@
     const name = document.getElementById('fName').value.trim();
     if (!name) { toast('กรุณาระบุชื่อสินค้า', 'warning'); return; }
     const categoryId = Number(document.getElementById('fCategory').value);
-
     const btn = document.getElementById('saveBtn');
     btn.disabled = true; btn.textContent = 'กำลังบันทึก...';
-
     try {
       let imageUrl = document.getElementById('fImageUrl').value.trim() || null;
       const file = document.getElementById('fImageFile').files[0];
       if (file) imageUrl = await uploadImage(file);
-
       const payload = {
         name,
         description: document.getElementById('fDesc').value.trim() || null,
@@ -333,7 +338,6 @@
         image_url: imageUrl,
         updated_at: new Date().toISOString(),
       };
-
       if (editingId) {
         const { error } = await supabase.from('products').update(payload).eq('id', editingId);
         if (error) throw error;
@@ -348,19 +352,13 @@
       }
       closeModal();
       await loadProducts();
-    } catch (e) {
-      toast('ผิดพลาด: ' + e.message, 'error');
-    } finally {
-      btn.disabled = false; btn.textContent = 'บันทึก';
-    }
+    } catch (e) { toast('ผิดพลาด: ' + e.message, 'error'); }
+    finally { btn.disabled = false; btn.textContent = 'บันทึก'; }
   });
 
-  // ============ DELETE (Soft) ============
   async function deleteProduct(id, name) {
-    if (!confirmDialog('ปิดใช้งานสินค้า "' + name + '" ?\n(ไม่ลบจริง — ยังคงประวัติเดิม สามารถคืนได้ภายหลัง)')) return;
-    const { error } = await supabase.from('products')
-      .update({ is_active: false, updated_at: new Date().toISOString() })
-      .eq('id', id);
+    if (!confirmDialog('ปิดใช้งานสินค้า "' + name + '" ?')) return;
+    const { error } = await supabase.from('products').update({ is_active: false, updated_at: new Date().toISOString() }).eq('id', id);
     if (error) { toast('ผิดพลาด: ' + error.message, 'error'); return; }
     toast('ปิดใช้งานเรียบร้อย', 'success');
     await loadProducts();
@@ -368,10 +366,8 @@
   window.deleteProduct = deleteProduct;
 
   async function restoreProduct(id) {
-    if (!confirmDialog('เปิดใช้งานสินค้านี้กลับมา?')) return;
-    const { error } = await supabase.from('products')
-      .update({ is_active: true, updated_at: new Date().toISOString() })
-      .eq('id', id);
+    if (!confirmDialog('เปิดใช้งานสินค้านี้?')) return;
+    const { error } = await supabase.from('products').update({ is_active: true, updated_at: new Date().toISOString() }).eq('id', id);
     if (error) { toast('ผิดพลาด: ' + error.message, 'error'); return; }
     toast('เปิดใช้งานเรียบร้อย', 'success');
     await loadProducts();
@@ -379,51 +375,43 @@
   window.restoreProduct = restoreProduct;
 
   async function deleteAllConfirm() {
-    const activeCount = products.filter(p => p.is_active).length;
-    if (activeCount === 0) { toast('ไม่มีสินค้าที่ใช้งานอยู่', 'warning'); return; }
-    if (!confirmDialog('⚠ ยืนยันปิดใช้งานสินค้าทั้งหมด ' + activeCount + ' รายการ?\n(ใช้แบบ Soft Delete - คืนได้ภายหลัง)')) return;
-    const typed = prompt('ป้องกันการกดพลาด: พิมพ์คำว่า DELETE เพื่อยืนยัน');
-    if (typed !== 'DELETE') { toast('ยกเลิก — พิมพ์ไม่ตรง', 'warning'); return; }
-    const { error } = await supabase.from('products')
-      .update({ is_active: false, updated_at: new Date().toISOString() })
-      .eq('is_active', true);
+    const cnt = products.filter(p => p.is_active).length;
+    if (cnt === 0) { toast('ไม่มีสินค้าที่ใช้งานอยู่', 'warning'); return; }
+    if (!confirmDialog('⚠ ยืนยันปิดใช้งานทั้งหมด ' + cnt + ' รายการ?')) return;
+    const typed = prompt('พิมพ์คำว่า DELETE เพื่อยืนยัน');
+    if (typed !== 'DELETE') { toast('ยกเลิก', 'warning'); return; }
+    const { error } = await supabase.from('products').update({ is_active: false, updated_at: new Date().toISOString() }).eq('is_active', true);
     if (error) { toast('ผิดพลาด: ' + error.message, 'error'); return; }
-    toast('ปิดใช้งานทั้งหมด ' + activeCount + ' รายการเรียบร้อย', 'success');
+    toast('ปิดใช้งาน ' + cnt + ' รายการ', 'success');
     await loadProducts();
   }
   window.deleteAllConfirm = deleteAllConfirm;
 
-  // ============ EXPORT CSV ============
   function exportCSV() {
     if (products.length === 0) { toast('ไม่มีสินค้า', 'warning'); return; }
-    const header = ['sku','name','description','category_code','unit','min_stock','max_stock','unit_cost','current_stock','image_url','is_active'];
+    const locCodes = locations.map(l => 'stock_' + l.code);
+    const header = ['sku','name','description','category_code','unit','min_stock','max_stock','unit_cost', ...locCodes, 'total_stock','image_url','is_active'];
     const rows = [header];
     products.forEach(p => {
+      const stockMap = stocksByProduct[p.id] || {};
+      const stockCols = locations.map(l => (stockMap[l.code]?.qty ?? 0));
       rows.push([
-        p.sku || '',
-        p.name || '',
-        p.description || '',
-        p.categories?.code || '',
-        p.unit || '',
-        p.min_stock || 0,
-        p.max_stock || 0,
-        p.unit_cost || 0,
-        p.current_stock || 0,
-        p.image_url || '',
-        p.is_active ? 'TRUE' : 'FALSE'
+        p.sku || '', p.name || '', p.description || '', p.categories?.code || '',
+        p.unit || '', p.min_stock || 0, p.max_stock || 0, p.unit_cost || 0,
+        ...stockCols,
+        p.current_stock || 0, p.image_url || '', p.is_active ? 'TRUE' : 'FALSE'
       ]);
     });
     downloadCSV('products_export_' + new Date().toISOString().slice(0,10) + '.csv', rows);
-    toast('Export ' + products.length + ' รายการเรียบร้อย', 'success');
+    toast('Export ' + products.length + ' รายการ', 'success');
   }
   window.exportCSV = exportCSV;
 
-  // ============ TEMPLATE ============
   function downloadTemplate() {
     const rows = [
       ['sku','name','description','category_code','unit','min_stock','max_stock','unit_cost','image_url'],
-      ['', 'ปากกาลูกลื่น สีดำ 0.5mm', 'ตัวอย่าง: ปล่อย sku ว่างเพื่อสร้างใหม่อัตโนมัติ', 'STA', 'ด้าม', 30, 100, 8.00, ''],
-      ['OFF-PAP-001', 'กระดาษ A4 80gsm', 'ตัวอย่าง: ใส่ sku ที่มีอยู่เพื่ออัปเดต', 'PAP', 'รีม', 20, 80, 125.00, '']
+      ['', 'ปากกาลูกลื่น สีดำ', 'เว้น sku ว่าง=สร้างใหม่', 'STA', 'ด้าม', 30, 100, 8.00, ''],
+      ['OFF-PAP-001', 'กระดาษ A4 80gsm', 'sku ที่มี=อัปเดต', 'PAP', 'รีม', 20, 80, 125.00, '']
     ];
     downloadCSV('products_template.csv', rows);
     toast('ดาวน์โหลด Template เรียบร้อย', 'success');
@@ -433,27 +421,22 @@
   function downloadCSV(filename, rows) {
     const csv = rows.map(r => r.map(c => {
       const s = String(c == null ? '' : c);
-      return s.includes(',') || s.includes('"') || s.includes('\n') ? '"' + s.replace(/"/g, '""') + '"' : s;
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? '"' + s.replace(/"/g,'""') + '"' : s;
     }).join(',')).join('\n');
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = filename; a.click();
+    const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
     URL.revokeObjectURL(url);
   }
 
-  // ============ IMPORT CSV ============
   function parseCSV(text) {
-    // Simple CSV parser ที่รองรับ quoted field
-    text = text.replace(/^﻿/, ''); // strip BOM
-    const lines = [];
-    let cur = '', inQuote = false, row = [];
+    text = text.replace(/^﻿/, '');
+    const lines = []; let cur = '', inQuote = false, row = [];
     for (let i = 0; i < text.length; i++) {
       const ch = text[i];
       if (inQuote) {
-        if (ch === '"') {
-          if (text[i+1] === '"') { cur += '"'; i++; } else { inQuote = false; }
-        } else { cur += ch; }
+        if (ch === '"') { if (text[i+1] === '"') { cur += '"'; i++; } else { inQuote = false; } }
+        else cur += ch;
       } else {
         if (ch === '"') inQuote = true;
         else if (ch === ',') { row.push(cur); cur = ''; }
@@ -472,29 +455,19 @@
     if (!file) return;
     const text = await file.text();
     const rows = parseCSV(text);
-    if (rows.length < 2) { toast('ไฟล์ว่างหรือไม่มีข้อมูล', 'error'); e.target.value = ''; return; }
-
+    if (rows.length < 2) { toast('ไฟล์ว่าง', 'error'); e.target.value = ''; return; }
     const header = rows[0].map(h => h.trim().toLowerCase());
-    const expectedFields = ['sku','name','description','category_code','unit','min_stock','max_stock','unit_cost','image_url'];
     const missing = ['name','category_code','unit'].filter(f => !header.includes(f));
-    if (missing.length > 0) {
-      toast('ไฟล์ขาด column: ' + missing.join(', '), 'error');
-      e.target.value = '';
-      return;
-    }
-
+    if (missing.length > 0) { toast('ขาด column: ' + missing.join(','), 'error'); e.target.value = ''; return; }
     importRows = rows.slice(1).map((r, idx) => {
       const o = {};
       header.forEach((h, i) => { o[h] = (r[i] || '').trim(); });
       const cat = categories.find(c => c.code === (o.category_code || '').toUpperCase());
-      const sku = o.sku || '';
-      const existing = sku ? products.find(p => p.sku === sku) : null;
-      const action = existing ? 'update' : 'create';
-      const hasError = !o.name || !cat || !o.unit;
-      const errorMsg = !o.name ? 'ขาดชื่อ' : !cat ? 'category_code ไม่ถูกต้อง: ' + o.category_code : !o.unit ? 'ขาดหน่วย' : '';
-      return { row: idx + 2, ...o, _category: cat, _action: action, _existing: existing, _error: errorMsg, _hasError: hasError };
+      const existing = o.sku ? products.find(p => p.sku === o.sku) : null;
+      return { row: idx + 2, ...o, _category: cat, _action: existing ? 'update' : 'create', _existing: existing,
+        _error: !o.name ? 'ขาดชื่อ' : !cat ? 'category_code ผิด: ' + o.category_code : !o.unit ? 'ขาดหน่วย' : '',
+        _hasError: !o.name || !cat || !o.unit };
     });
-
     renderImportPreview();
     document.getElementById('importModal').classList.remove('hidden');
     e.target.value = '';
@@ -505,94 +478,61 @@
     const invalid = importRows.filter(r => r._hasError);
     const creates = valid.filter(r => r._action === 'create').length;
     const updates = valid.filter(r => r._action === 'update').length;
-
     document.getElementById('importSummary').innerHTML =
-      '<span class="text-green-700 font-bold">+' + creates + ' สร้างใหม่</span> · ' +
-      '<span class="text-blue-700 font-bold">↻ ' + updates + ' อัปเดต</span>' +
-      (invalid.length > 0 ? ' · <span class="text-red-700 font-bold">✗ ' + invalid.length + ' Error</span>' : '');
-
+      '<span class="text-green-700 font-bold">+' + creates + '</span> · ' +
+      '<span class="text-blue-700 font-bold">↻ ' + updates + '</span>' +
+      (invalid.length > 0 ? ' · <span class="text-red-700 font-bold">✗ ' + invalid.length + '</span>' : '');
     document.getElementById('importBody').innerHTML =
       '<table class="w-full text-sm"><thead class="bg-slate-50 text-xs"><tr>' +
-        '<th class="p-2 text-left">บรรทัด</th>' +
-        '<th class="p-2 text-left">Action</th>' +
-        '<th class="p-2 text-left">SKU</th>' +
-        '<th class="p-2 text-left">ชื่อ</th>' +
-        '<th class="p-2 text-left">หมวด</th>' +
-        '<th class="p-2 text-left">หน่วย</th>' +
-        '<th class="p-2 text-right">Min/Max</th>' +
-        '<th class="p-2 text-right">ต้นทุน</th>' +
-        '<th class="p-2 text-left">หมายเหตุ</th>' +
+        '<th class="p-2 text-left">บรรทัด</th><th class="p-2 text-left">Action</th><th class="p-2 text-left">SKU</th>' +
+        '<th class="p-2 text-left">ชื่อ</th><th class="p-2 text-left">หมวด</th><th class="p-2 text-left">หมายเหตุ</th>' +
       '</tr></thead><tbody class="divide-y">' +
       importRows.map(r => {
-        const actionBadge = r._hasError ? '<span class="text-xs px-2 py-0.5 rounded bg-red-100 text-red-700">✗ ผิดพลาด</span>'
-          : r._action === 'create' ? '<span class="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700">+ ใหม่</span>'
-          : '<span class="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700">↻ อัปเดต</span>';
+        const ab = r._hasError ? '<span class="text-xs px-2 py-0.5 rounded bg-red-100 text-red-700">✗</span>'
+          : r._action === 'create' ? '<span class="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700">+</span>'
+          : '<span class="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700">↻</span>';
         return '<tr class="' + (r._hasError ? 'bg-red-50' : '') + '">' +
-          '<td class="p-2 text-xs">' + r.row + '</td>' +
-          '<td class="p-2">' + actionBadge + '</td>' +
+          '<td class="p-2 text-xs">' + r.row + '</td><td class="p-2">' + ab + '</td>' +
           '<td class="p-2 font-mono text-xs">' + (r.sku || '<auto>') + '</td>' +
           '<td class="p-2">' + (r.name || '-') + '</td>' +
           '<td class="p-2 text-xs">' + (r._category ? r._category.icon + ' ' + r._category.name : r.category_code || '-') + '</td>' +
-          '<td class="p-2 text-xs">' + (r.unit || '-') + '</td>' +
-          '<td class="p-2 text-right text-xs">' + (r.min_stock || 0) + '/' + (r.max_stock || 0) + '</td>' +
-          '<td class="p-2 text-right text-xs">' + (r.unit_cost || 0) + '</td>' +
-          '<td class="p-2 text-xs text-red-600">' + (r._error || '') + '</td>' +
-        '</tr>';
+          '<td class="p-2 text-xs text-red-600">' + (r._error || '') + '</td></tr>';
       }).join('') + '</tbody></table>';
-
     document.getElementById('importConfirmBtn').disabled = valid.length === 0;
   }
 
-  function closeImportModal() {
-    document.getElementById('importModal').classList.add('hidden');
-    importRows = [];
-  }
+  function closeImportModal() { document.getElementById('importModal').classList.add('hidden'); importRows = []; }
   window.closeImportModal = closeImportModal;
 
   document.getElementById('importConfirmBtn').addEventListener('click', async () => {
     const valid = importRows.filter(r => !r._hasError);
-    if (valid.length === 0) { toast('ไม่มีข้อมูลที่ถูกต้อง', 'warning'); return; }
-    if (!confirmDialog('ยืนยันนำเข้า ' + valid.length + ' รายการ?')) return;
-
+    if (valid.length === 0) return;
+    if (!confirmDialog('นำเข้า ' + valid.length + ' รายการ?')) return;
     const btn = document.getElementById('importConfirmBtn');
     btn.disabled = true; btn.textContent = 'กำลังนำเข้า...';
-
-    let createCount = 0, updateCount = 0, failCount = 0;
+    let c = 0, u = 0, f = 0;
     for (const r of valid) {
       try {
-        const payload = {
-          name: r.name,
-          description: r.description || null,
-          category_id: r._category.id,
-          unit: r.unit,
-          min_stock: Number(r.min_stock || 0),
-          max_stock: Number(r.max_stock || 0),
-          unit_cost: Number(r.unit_cost || 0),
-          image_url: r.image_url || null,
+        const p = {
+          name: r.name, description: r.description || null,
+          category_id: r._category.id, unit: r.unit,
+          min_stock: Number(r.min_stock || 0), max_stock: Number(r.max_stock || 0),
+          unit_cost: Number(r.unit_cost || 0), image_url: r.image_url || null,
           updated_at: new Date().toISOString(),
         };
         if (r._action === 'update') {
-          const { error } = await supabase.from('products').update(payload).eq('id', r._existing.id);
-          if (error) throw error;
-          updateCount++;
+          const { error } = await supabase.from('products').update(p).eq('id', r._existing.id);
+          if (error) throw error; u++;
         } else {
-          // generate sku
           const { data: sku } = await supabase.rpc('generate_sku', { cat_code: r._category.code });
-          payload.sku = sku;
-          payload.is_active = true;
-          const { error } = await supabase.from('products').insert(payload);
-          if (error) throw error;
-          createCount++;
+          p.sku = sku; p.is_active = true;
+          const { error } = await supabase.from('products').insert(p);
+          if (error) throw error; c++;
         }
-      } catch (e) {
-        console.error('Import row ' + r.row + ':', e);
-        failCount++;
-      }
+      } catch (e) { console.error('Row ' + r.row, e); f++; }
     }
-
-    toast('นำเข้าเสร็จ: สร้าง ' + createCount + ' · อัปเดต ' + updateCount + (failCount > 0 ? ' · ผิดพลาด ' + failCount : ''), failCount > 0 ? 'warning' : 'success');
-    closeImportModal();
-    await loadProducts();
+    toast('สร้าง ' + c + ' · อัปเดต ' + u + (f > 0 ? ' · ผิด ' + f : ''), f > 0 ? 'warning' : 'success');
+    closeImportModal(); await loadProducts();
     btn.disabled = false; btn.textContent = 'ยืนยันนำเข้า';
   });
   </script>
