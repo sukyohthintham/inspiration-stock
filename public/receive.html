@@ -20,7 +20,7 @@
         </label>
       </div>
     </div>
-    <p class="text-sm text-slate-500 mb-6">บันทึกการรับเข้าจาก Supplier · ระบบจะอัปเดต stock ของ <b>คลังที่เลือก</b> และต้นทุนเฉลี่ยอัตโนมัติ · รองรับ Import CSV เพื่อรับเข้าทีละหลายรายการ</p>
+    <p class="text-sm text-slate-500 mb-6">บันทึกการรับเข้า · ระบบจะอัปเดต stock + ต้นทุนเฉลี่ยอัตโนมัติ · <b>รหัสใหม่</b> สร้างสินค้าให้อัตโนมัติ · Supplier ไม่บังคับ</p>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <div class="bg-white rounded-2xl p-5 shadow-sm lg:col-span-2">
@@ -33,13 +33,13 @@
             </select>
           </div>
           <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">Supplier *</label>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Supplier <span class="text-slate-400 text-[10px]">(ไม่บังคับ)</span></label>
             <select id="supplierSel" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm">
-              <option value="">- เลือก -</option>
+              <option value="">- ไม่ระบุ -</option>
             </select>
           </div>
           <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1">PO Reference (ไม่บังคับ)</label>
+            <label class="block text-xs font-medium text-slate-600 mb-1">PO Reference</label>
             <input id="poRef" type="text" placeholder="PO-2026-001" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm">
           </div>
         </div>
@@ -49,7 +49,7 @@
             <div class="col-span-6 md:col-span-7">
               <label class="block text-[10px] font-medium text-slate-600 mb-1">สินค้า</label>
               <select id="prodSel" class="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm">
-                <option value="">- ค้นหา/เลือกสินค้า -</option>
+                <option value="">- เลือกสินค้า -</option>
               </select>
             </div>
             <div class="col-span-3 md:col-span-2">
@@ -79,20 +79,14 @@
             </thead>
             <tbody id="linesBody" class="divide-y"></tbody>
             <tfoot class="bg-slate-50 font-semibold text-sm">
-              <tr>
-                <td class="text-right p-2" colspan="3">รวมทั้งสิ้น</td>
-                <td class="text-right p-2" id="grandTotal">0.00</td>
-                <td></td>
-              </tr>
+              <tr><td class="text-right p-2" colspan="3">รวมทั้งสิ้น</td><td class="text-right p-2" id="grandTotal">0.00</td><td></td></tr>
             </tfoot>
           </table>
         </div>
 
         <textarea id="rcvNotes" placeholder="หมายเหตุ (ถ้ามี)..." rows="2" class="w-full mt-4 px-3 py-2 border border-slate-200 rounded-lg text-sm"></textarea>
 
-        <button id="saveRcvBtn" class="w-full mt-4 bg-gradient-to-r from-green-600 to-green-700 text-white font-semibold py-3 rounded-xl shadow-lg disabled:opacity-50">
-          💾 บันทึกการรับเข้า
-        </button>
+        <button id="saveRcvBtn" class="w-full mt-4 bg-gradient-to-r from-green-600 to-green-700 text-white font-semibold py-3 rounded-xl shadow-lg disabled:opacity-50">💾 บันทึกการรับเข้า</button>
       </div>
 
       <div class="bg-white rounded-2xl p-5 shadow-sm">
@@ -105,11 +99,11 @@
   <!-- Import Preview Modal -->
   <div id="importModal" class="fixed inset-0 z-50 hidden">
     <div class="absolute inset-0 bg-black/50" onclick="closeImportModal()"></div>
-    <div class="absolute inset-x-4 top-10 max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+    <div class="absolute inset-x-4 top-10 max-w-5xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
       <div class="px-5 py-3 border-b flex items-center justify-between bg-slate-50">
         <div>
           <div class="font-bold text-lg">📥 ตรวจสอบข้อมูลก่อนรับเข้า</div>
-          <div class="text-xs text-slate-500">ระบุคลัง + Supplier ที่จะรับเข้า</div>
+          <div class="text-xs text-slate-500">รหัสที่ไม่มี → สร้างสินค้าใหม่อัตโนมัติ</div>
         </div>
         <button onclick="closeImportModal()" class="text-slate-400 hover:text-slate-700 text-xl">✕</button>
       </div>
@@ -122,9 +116,9 @@
           </select>
         </div>
         <div>
-          <label class="block text-xs font-medium text-slate-600 mb-1">Supplier *</label>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Supplier <span class="text-slate-400 text-[10px]">(ไม่บังคับ)</span></label>
           <select id="importSupSel" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm">
-            <option value="">- เลือก -</option>
+            <option value="">- ไม่ระบุ -</option>
           </select>
         </div>
       </div>
@@ -147,13 +141,14 @@
   let allProducts = [];
   let allLocations = [];
   let allSuppliers = [];
+  let allCategories = [];
   let lines = [];
   let importRows = [];
 
   (async () => {
     me = await setupAdminLayout('receive');
     if (!me) return;
-    await Promise.all([loadLocations(), loadSuppliers(), loadProducts(), loadRecent()]);
+    await Promise.all([loadLocations(), loadSuppliers(), loadProducts(), loadCategories(), loadRecent()]);
     document.getElementById('importFile').addEventListener('change', handleImportFile);
   })();
 
@@ -169,15 +164,20 @@
     const { data } = await supabase.from('suppliers').select('id, name, code').eq('is_active', true).order('name');
     allSuppliers = data || [];
     const opts = allSuppliers.map(s => '<option value="' + s.id + '">' + s.name + '</option>').join('');
-    document.getElementById('supplierSel').innerHTML = '<option value="">- เลือก -</option>' + opts;
-    document.getElementById('importSupSel').innerHTML = '<option value="">- เลือก -</option>' + opts;
+    document.getElementById('supplierSel').innerHTML = '<option value="">- ไม่ระบุ -</option>' + opts;
+    document.getElementById('importSupSel').innerHTML = '<option value="">- ไม่ระบุ -</option>' + opts;
   }
 
   async function loadProducts() {
-    const { data } = await supabase.from('products').select('id, sku, name, unit, unit_cost').eq('is_active', true).order('name');
+    const { data } = await supabase.from('products').select('id, sku, name, unit, unit_cost, category_id').eq('is_active', true).order('name');
     allProducts = data || [];
-    document.getElementById('prodSel').innerHTML = '<option value="">- ค้นหา/เลือกสินค้า -</option>' +
+    document.getElementById('prodSel').innerHTML = '<option value="">- เลือกสินค้า -</option>' +
       allProducts.map(p => '<option value="' + p.id + '">' + p.sku + ' · ' + p.name + '</option>').join('');
+  }
+
+  async function loadCategories() {
+    const { data } = await supabase.from('categories').select('*').order('display_order');
+    allCategories = data || [];
   }
 
   async function loadRecent() {
@@ -185,17 +185,14 @@
       .select('id, receive_no, received_at, total_amount, suppliers(name), locations(name, code), receiving_items(quantity)')
       .order('received_at', { ascending: false }).limit(20);
     const el = document.getElementById('recentList');
-    if (!data || data.length === 0) {
-      el.innerHTML = '<p class="text-sm text-slate-500 text-center py-4">ยังไม่มีรายการ</p>';
-      return;
-    }
+    if (!data || data.length === 0) { el.innerHTML = '<p class="text-sm text-slate-500 text-center py-4">ยังไม่มีรายการ</p>'; return; }
     el.innerHTML = data.map(r =>
       '<div class="p-3 rounded-lg border border-slate-200">' +
         '<div class="flex justify-between items-start">' +
           '<div class="font-mono text-sm font-semibold">' + r.receive_no + '</div>' +
           '<div class="text-xs text-slate-500">' + fmtDateOnly(r.received_at) + '</div>' +
         '</div>' +
-        '<div class="text-xs text-slate-600 mt-1">' + (r.suppliers?.name || '-') + '</div>' +
+        '<div class="text-xs text-slate-600 mt-1">' + (r.suppliers?.name || '<i>ไม่ระบุ supplier</i>') + '</div>' +
         '<div class="text-[10px] text-blue-600 mt-1">🏢 ' + (r.locations?.name || '-') + '</div>' +
         '<div class="text-xs text-slate-500 mt-1">' + (r.receiving_items||[]).length + ' รายการ · ' + fmtCurrency(r.total_amount) + ' ฿</div>' +
       '</div>'
@@ -218,9 +215,7 @@
     const ex = lines.find(l => l.product_id === id);
     if (ex) ex.qty += qty;
     else lines.push({ product_id: id, name: p.name, sku: p.sku, unit: p.unit, qty, cost });
-    document.getElementById('prodSel').value = '';
-    document.getElementById('qtyInput').value = '';
-    document.getElementById('costInput').value = '';
+    ['prodSel','qtyInput','costInput'].forEach(i => document.getElementById(i).value = '');
     renderLines();
   });
 
@@ -244,41 +239,62 @@
   function removeLine(idx) { lines.splice(idx, 1); renderLines(); }
   window.removeLine = removeLine;
 
+  // Save Receive - รองรับ items ทั้งที่มี product_id และที่ต้องสร้างใหม่
   async function saveReceive(locationId, supplierId, poRef, notes, items) {
     const totalAmount = items.reduce((s, l) => s + l.qty * l.cost, 0);
     const { data: rcv, error: rcvErr } = await supabase.from('receivings').insert({
-      supplier_id: supplierId, location_id: locationId, po_reference: poRef || null,
+      supplier_id: supplierId || null, location_id: locationId, po_reference: poRef || null,
       received_by: me.id, total_amount: totalAmount, notes: notes || null,
     }).select().single();
     if (rcvErr) throw rcvErr;
+
+    let createdCount = 0;
     for (const l of items) {
+      let productId = l.product_id;
+
+      // ถ้าไม่มี product_id → สร้างใหม่
+      if (!productId && l._newProduct) {
+        const np = l._newProduct;
+        let sku = np.sku;
+        // ถ้าไม่มี sku ระบุ → generate ตาม category
+        if (!sku) {
+          const { data: genSku } = await supabase.rpc('generate_sku', { cat_code: np.category_code });
+          sku = genSku;
+        }
+        const { data: prod, error: prodErr } = await supabase.from('products').insert({
+          sku, name: np.name, category_id: np.category_id,
+          unit: np.unit, unit_cost: l.cost, is_active: true,
+        }).select().single();
+        if (prodErr) throw new Error('สร้างสินค้า ' + np.name + ' ไม่ได้: ' + prodErr.message);
+        productId = prod.id;
+        createdCount++;
+      }
+
       await supabase.from('receiving_items').insert({
-        receiving_id: rcv.id, product_id: l.product_id,
-        quantity: l.qty, unit_cost: l.cost,
+        receiving_id: rcv.id, product_id: productId, quantity: l.qty, unit_cost: l.cost,
       });
       const { error: rpcErr } = await supabase.rpc('receive_stock', {
-        p_product_id: l.product_id, p_quantity: l.qty, p_unit_cost: l.cost,
+        p_product_id: productId, p_quantity: l.qty, p_unit_cost: l.cost,
         p_reference_id: rcv.id, p_reference_no: rcv.receive_no,
         p_user_id: me.id, p_location_id: locationId,
         p_notes: 'รับเข้าตาม ' + rcv.receive_no
       });
       if (rpcErr) throw rpcErr;
     }
-    return rcv;
+    return { rcv, createdCount };
   }
 
   document.getElementById('saveRcvBtn').addEventListener('click', async () => {
     const locationId = Number(document.getElementById('locationSel').value);
     if (!locationId) { toast('🏢 กรุณาเลือกคลัง', 'warning'); return; }
     if (lines.length === 0) { toast('ยังไม่มีรายการ', 'warning'); return; }
-    const supplierId = Number(document.getElementById('supplierSel').value);
-    if (!supplierId) { toast('กรุณาเลือก Supplier', 'warning'); return; }
+    const supplierId = Number(document.getElementById('supplierSel').value) || null;
     const locName = allLocations.find(l => l.id === locationId)?.name || '';
     if (!confirmDialog('ยืนยันรับเข้าคลัง "' + locName + '" ' + lines.length + ' รายการ?')) return;
     const btn = document.getElementById('saveRcvBtn');
     btn.disabled = true; btn.textContent = 'กำลังบันทึก...';
     try {
-      const rcv = await saveReceive(locationId, supplierId,
+      const { rcv } = await saveReceive(locationId, supplierId,
         document.getElementById('poRef').value.trim(),
         document.getElementById('rcvNotes').value.trim(),
         lines);
@@ -292,11 +308,13 @@
 
   // ============ TEMPLATE / IMPORT ============
   function downloadTemplate() {
+    const catCodes = allCategories.map(c => c.code).join('/');
     const rows = [
-      ['sku', 'quantity', 'unit_cost'],
-      ['OFF-STA-001', 100, 8.00],
-      ['OFF-PAP-001', 50, 125.00],
-      ['OFF-IT-001', 5, 450.00]
+      ['sku', 'name', 'category_code', 'unit', 'quantity', 'unit_cost'],
+      ['# คำอธิบาย:', 'sku ถ้ามีในระบบใช้เดิม / ไม่มี = สร้างใหม่', 'category: ' + catCodes, 'หน่วยนับ', 'จำนวน', 'ราคา/หน่วย'],
+      ['OFF-STA-001', '', '', '', 100, 8.00],
+      ['', 'ปากกาแดงใหม่ Pilot', 'STA', 'ด้าม', 50, 12.00],
+      ['', 'หมึกพิมพ์ Canon รุ่นใหม่', 'PAP', 'ตลับ', 5, 580.00]
     ];
     downloadCSV('receive_template.csv', rows);
     toast('ดาวน์โหลด Template เรียบร้อย', 'success');
@@ -340,19 +358,42 @@
     const rows = parseCSV(text);
     if (rows.length < 2) { toast('ไฟล์ว่าง', 'error'); e.target.value = ''; return; }
     const header = rows[0].map(h => h.trim().toLowerCase());
-    const missing = ['sku','quantity'].filter(f => !header.includes(f));
-    if (missing.length > 0) { toast('ขาด column: ' + missing.join(','), 'error'); e.target.value = ''; return; }
+    if (!header.includes('quantity')) { toast('ขาด column quantity', 'error'); e.target.value = ''; return; }
 
-    importRows = rows.slice(1).map((r, idx) => {
-      const o = {};
-      header.forEach((h, i) => { o[h] = (r[i] || '').trim(); });
-      const p = allProducts.find(x => x.sku === o.sku);
-      const qty = Number(o.quantity);
-      const cost = Number(o.unit_cost || (p?.unit_cost ?? 0));
-      const hasError = !p || !qty || qty <= 0;
-      const err = !p ? 'SKU ไม่พบ: ' + o.sku : (!qty || qty <= 0) ? 'จำนวนต้องมากกว่า 0' : '';
-      return { row: idx + 2, sku: o.sku, _product: p, _qty: qty, _cost: cost, _error: err, _hasError: hasError };
-    });
+    importRows = rows.slice(1)
+      // ข้ามบรรทัด comment (เริ่มต้นด้วย # หรือว่าง)
+      .filter(r => !(r[0] || '').trim().startsWith('#'))
+      .map((r, idx) => {
+        const o = {};
+        header.forEach((h, i) => { o[h] = (r[i] || '').trim(); });
+        const qty = Number(o.quantity);
+        const cost = Number(o.unit_cost || 0);
+
+        const sku = (o.sku || '').trim();
+        const existing = sku ? allProducts.find(p => p.sku === sku) : null;
+
+        let action, newProduct, error;
+        if (!qty || qty <= 0) {
+          action = 'error'; error = 'จำนวนต้องมากกว่า 0';
+        } else if (existing) {
+          action = 'use_existing';
+        } else {
+          // ต้องสร้างใหม่ — ต้องมี name + category_code + unit
+          const name = (o.name || '').trim();
+          const catCode = (o.category_code || '').trim().toUpperCase();
+          const unit = (o.unit || '').trim();
+          const cat = allCategories.find(c => c.code === catCode);
+          if (!name) { action = 'error'; error = 'ขาดชื่อสินค้า (สำหรับสร้างใหม่)'; }
+          else if (!cat) { action = 'error'; error = 'category_code ไม่ถูก: ' + catCode; }
+          else if (!unit) { action = 'error'; error = 'ขาดหน่วย'; }
+          else {
+            action = 'create_new';
+            newProduct = { sku: sku || null, name, category_code: catCode, category_id: cat.id, unit };
+          }
+        }
+
+        return { row: idx + 2, raw: o, sku, _existing: existing, _qty: qty, _cost: cost, _action: action, _newProduct: newProduct, _error: error };
+      });
 
     renderImportPreview();
     document.getElementById('importModal').classList.remove('hidden');
@@ -360,31 +401,51 @@
   }
 
   function renderImportPreview() {
-    const valid = importRows.filter(r => !r._hasError);
-    const invalid = importRows.filter(r => r._hasError);
-    const total = valid.reduce((s, r) => s + (r._qty * r._cost), 0);
+    const valid = importRows.filter(r => r._action !== 'error');
+    const news = valid.filter(r => r._action === 'create_new');
+    const uses = valid.filter(r => r._action === 'use_existing');
+    const errs = importRows.filter(r => r._action === 'error');
+    const total = valid.reduce((s, r) => s + r._qty * r._cost, 0);
 
     document.getElementById('importSummary').innerHTML =
-      '<span class="text-green-700 font-bold">✓ ' + valid.length + ' รายการ</span> · ' +
-      'มูลค่ารวม <b>' + fmtCurrency(total) + ' ฿</b>' +
-      (invalid.length > 0 ? ' · <span class="text-red-700 font-bold">✗ ' + invalid.length + ' ผิด</span>' : '');
+      '<span class="text-blue-700 font-bold">↻ ใช้เดิม ' + uses.length + '</span> · ' +
+      '<span class="text-green-700 font-bold">+ สร้างใหม่ ' + news.length + '</span> · ' +
+      'มูลค่า <b>' + fmtCurrency(total) + ' ฿</b>' +
+      (errs.length > 0 ? ' · <span class="text-red-700 font-bold">✗ ผิด ' + errs.length + '</span>' : '');
 
     document.getElementById('importBody').innerHTML =
       '<table class="w-full text-sm"><thead class="bg-slate-50 text-xs"><tr>' +
-        '<th class="p-2 text-left">บรรทัด</th><th class="p-2 text-left">รหัส</th>' +
-        '<th class="p-2 text-left">สินค้า</th><th class="p-2 text-center">จำนวน</th>' +
-        '<th class="p-2 text-right">ราคา</th><th class="p-2 text-right">รวม</th>' +
-        '<th class="p-2 text-left">หมายเหตุ</th>' +
+        '<th class="p-2 text-left">บรรทัด</th><th class="p-2 text-left">Action</th>' +
+        '<th class="p-2 text-left">รหัส</th><th class="p-2 text-left">สินค้า</th>' +
+        '<th class="p-2 text-left">หมวด</th><th class="p-2 text-left">หน่วย</th>' +
+        '<th class="p-2 text-center">จำนวน</th><th class="p-2 text-right">ราคา</th>' +
+        '<th class="p-2 text-right">รวม</th><th class="p-2 text-left">หมายเหตุ</th>' +
       '</tr></thead><tbody class="divide-y">' +
       importRows.map(r => {
-        const cls = r._hasError ? 'bg-red-50' : '';
-        return '<tr class="' + cls + '">' +
+        let badge, name, sku, unit, cat, errCls = '';
+        if (r._action === 'error') {
+          badge = '<span class="text-xs px-2 py-0.5 rounded bg-red-100 text-red-700">✗ ผิด</span>';
+          name = r.raw.name || '-'; sku = r.sku || '-'; unit = r.raw.unit || '-'; cat = r.raw.category_code || '-';
+          errCls = 'bg-red-50';
+        } else if (r._action === 'create_new') {
+          badge = '<span class="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700">+ ใหม่</span>';
+          name = r._newProduct.name; sku = r._newProduct.sku || '<auto>'; unit = r._newProduct.unit;
+          cat = (allCategories.find(c => c.id === r._newProduct.category_id)?.name) || r._newProduct.category_code;
+          errCls = 'bg-green-50';
+        } else {
+          badge = '<span class="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700">↻ เดิม</span>';
+          name = r._existing.name; sku = r._existing.sku; unit = r._existing.unit; cat = '-';
+        }
+        return '<tr class="' + errCls + '">' +
           '<td class="p-2 text-xs">' + r.row + '</td>' +
-          '<td class="p-2 font-mono text-xs">' + r.sku + '</td>' +
-          '<td class="p-2">' + (r._product?.name || '-') + '</td>' +
+          '<td class="p-2">' + badge + '</td>' +
+          '<td class="p-2 font-mono text-xs">' + sku + '</td>' +
+          '<td class="p-2">' + name + '</td>' +
+          '<td class="p-2 text-xs">' + cat + '</td>' +
+          '<td class="p-2 text-xs">' + unit + '</td>' +
           '<td class="p-2 text-center">' + (r._qty || '-') + '</td>' +
           '<td class="p-2 text-right text-xs">' + fmtCurrency(r._cost) + '</td>' +
-          '<td class="p-2 text-right font-medium">' + (r._hasError ? '-' : fmtCurrency(r._qty * r._cost)) + '</td>' +
+          '<td class="p-2 text-right font-medium">' + (r._action === 'error' ? '-' : fmtCurrency(r._qty * r._cost)) + '</td>' +
           '<td class="p-2 text-xs text-red-600">' + (r._error || '') + '</td></tr>';
       }).join('') + '</tbody></table>';
 
@@ -399,27 +460,31 @@
 
   document.getElementById('importConfirmBtn').addEventListener('click', async () => {
     const locationId = Number(document.getElementById('importLocSel').value);
-    const supplierId = Number(document.getElementById('importSupSel').value);
-    if (!locationId) { toast('🏢 กรุณาเลือกคลังก่อน', 'warning'); return; }
-    if (!supplierId) { toast('กรุณาเลือก Supplier', 'warning'); return; }
-    const valid = importRows.filter(r => !r._hasError);
+    const supplierId = Number(document.getElementById('importSupSel').value) || null;
+    if (!locationId) { toast('🏢 กรุณาเลือกคลัง', 'warning'); return; }
+    const valid = importRows.filter(r => r._action !== 'error');
     if (valid.length === 0) return;
+    const news = valid.filter(r => r._action === 'create_new').length;
     const locName = allLocations.find(l => l.id === locationId)?.name || '';
-    if (!confirmDialog('ยืนยันรับเข้าคลัง "' + locName + '" ' + valid.length + ' รายการ?')) return;
+    const msg = 'ยืนยันรับเข้าคลัง "' + locName + '" ' + valid.length + ' รายการ?' + (news > 0 ? '\n(จะสร้างสินค้าใหม่ ' + news + ' รายการ)' : '');
+    if (!confirmDialog(msg)) return;
 
     const btn = document.getElementById('importConfirmBtn');
     btn.disabled = true; btn.textContent = 'กำลังนำเข้า...';
     try {
-      const items = valid.map(r => ({ product_id: r._product.id, qty: r._qty, cost: r._cost }));
-      const rcv = await saveReceive(locationId, supplierId, 'IMPORT-' + new Date().toISOString().slice(0,10), 'นำเข้าจาก CSV', items);
-      toast('รับเข้าเรียบร้อย ' + rcv.receive_no + ' · ' + valid.length + ' รายการ', 'success');
+      const items = valid.map(r => {
+        if (r._action === 'use_existing') {
+          return { product_id: r._existing.id, qty: r._qty, cost: r._cost };
+        } else {
+          return { product_id: null, qty: r._qty, cost: r._cost, _newProduct: r._newProduct };
+        }
+      });
+      const { rcv, createdCount } = await saveReceive(locationId, supplierId, 'IMPORT-' + new Date().toISOString().slice(0,10), 'นำเข้าจาก CSV', items);
+      toast('รับเข้า ' + rcv.receive_no + ' · ' + valid.length + ' รายการ' + (createdCount > 0 ? ' (สร้างใหม่ ' + createdCount + ')' : ''), 'success');
       closeImportModal();
       await loadRecent(); await loadProducts();
-    } catch (e) {
-      toast('ผิดพลาด: ' + e.message, 'error');
-    } finally {
-      btn.disabled = false; btn.textContent = '✓ ยืนยันรับเข้า';
-    }
+    } catch (e) { toast('ผิดพลาด: ' + e.message, 'error'); }
+    finally { btn.disabled = false; btn.textContent = '✓ ยืนยันรับเข้า'; }
   });
 
   renderLines();
