@@ -51,6 +51,7 @@
   let me = null;
   let activeStatus = 'pending';
   let allowedLocations = [];
+  let currentLocationOverride = null; // ใช้กรณีใบเก่าไม่มี location
 
   (async () => {
     me = await setupAdminLayout('approve');
@@ -65,7 +66,6 @@
   })();
 
   async function loadAllowedLocations() {
-    // RLS จะ filter ให้แล้ว — query ออกมาดูได้ทั้งหมดที่ access ได้
     const { data } = await supabase.from('locations').select('*').eq('is_active', true).order('display_order');
     allowedLocations = data || [];
     document.getElementById('locFilter').innerHTML = '<option value="">ทุกคลังที่ดูแล</option>' +
@@ -113,11 +113,13 @@
         rejected: { c: 'bg-red-100 text-red-700', t: 'ไม่อนุมัติ' },
         cancelled: { c: 'bg-slate-100 text-slate-600', t: 'ยกเลิก' },
       }[r.status] || { c: 'bg-slate-100', t: r.status };
+      const locBadge = r.locations
+        ? '<span class="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">🏢 ' + r.locations.name + '</span>'
+        : '<span class="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">⚠ ไม่ระบุคลัง</span>';
       return '<button onclick="openDetail(' + r.id + ')" class="w-full bg-white rounded-xl border border-slate-200 hover:shadow-md transition p-4 text-left">' +
         '<div class="flex items-center gap-3 flex-wrap">' +
           '<div class="font-mono font-bold text-slate-900">' + r.req_no + '</div>' +
-          '<span class="text-xs px-2 py-0.5 rounded-full ' + sb.c + '">' + sb.t + '</span>' +
-          (r.locations ? '<span class="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">🏢 ' + r.locations.name + '</span>' : '') +
+          '<span class="text-xs px-2 py-0.5 rounded-full ' + sb.c + '">' + sb.t + '</span>' + locBadge +
           '<div class="flex-1"></div>' +
           '<div class="text-xs text-slate-500">' + fmtDate(r.created_at) + '</div>' +
         '</div>' +
@@ -136,42 +138,85 @@
       .select('*, profiles!requested_by(full_name, department, phone), locations(id, name, code)')
       .eq('id', reqId).single();
     if (!req) { toast('ไม่พบใบเบิก','error'); return; }
-    // ดึง stock per location ของแต่ละ product
+
+    // ถ้าใบไม่มี location_id → ตั้งเป็น Warehouse default
+    if (!req.location_id) {
+      const wh = allowedLocations.find(l => l.code === 'WAREHOUSE') || allowedLocations[0];
+      currentLocationOverride = wh?.id || null;
+    } else {
+      currentLocationOverride = req.location_id;
+    }
+
     const { data: items } = await supabase.from('requisition_items')
       .select('id, quantity_requested, quantity_approved, quantity_issued, unit, products(id, sku, name, image_url, unit_cost)')
       .eq('requisition_id', reqId);
-    // โหลด stock ของ location ที่เกี่ยวข้อง
+
+    // โหลด stock ของ location ทุกๆ ที่ (สำหรับให้ admin เห็น breakdown)
     const productIds = (items || []).map(i => i.products?.id).filter(Boolean);
-    let stockMap = {};
-    if (productIds.length > 0 && req.location_id) {
+    let stockByLoc = {}; // product_id -> { location_code -> qty }
+    if (productIds.length > 0) {
       const { data: stocks } = await supabase.from('product_stocks')
-        .select('product_id, current_stock')
-        .in('product_id', productIds)
-        .eq('location_id', req.location_id);
-      (stocks || []).forEach(s => stockMap[s.product_id] = Number(s.current_stock));
+        .select('product_id, current_stock, locations(id, code, name)')
+        .in('product_id', productIds);
+      (stocks || []).forEach(s => {
+        if (!s.locations) return;
+        if (!stockByLoc[s.product_id]) stockByLoc[s.product_id] = {};
+        stockByLoc[s.product_id][s.locations.code] = { qty: Number(s.current_stock), id: s.locations.id, name: s.locations.name };
+      });
     }
 
     document.getElementById('mReqNo').textContent = req.req_no;
+    const locDisplay = req.locations
+      ? '<span class="text-purple-700 font-semibold">🏢 ' + req.locations.name + '</span>'
+      : '<span class="text-orange-700 font-semibold">⚠ ไม่ระบุคลัง (default: Warehouse)</span>';
     document.getElementById('mReqMeta').innerHTML =
       (req.profiles?.full_name || '') + ' · ' + (req.profiles?.department || '-') +
-      ' · ' + fmtDate(req.created_at) +
-      (req.locations ? ' · <span class="text-purple-700 font-semibold">🏢 ' + req.locations.name + '</span>' : '');
+      ' · ' + fmtDate(req.created_at) + ' · ' + locDisplay;
 
-    const body = document.getElementById('mBody');
-    body.innerHTML =
+    // ใช้ location_id ปัจจุบัน (override หรือจริง)
+    const useLocId = currentLocationOverride;
+    const useLoc = allowedLocations.find(l => l.id === useLocId);
+
+    // เลือก location (สำหรับใบเก่าหรือเปลี่ยน)
+    let locSelectHTML = '';
+    if (req.status === 'pending' && (!req.location_id || allowedLocations.length > 1)) {
+      locSelectHTML =
+        '<div class="bg-blue-50 border border-blue-200 p-3 rounded-lg text-sm">' +
+          '<label class="block text-xs font-medium text-blue-900 mb-1">🏢 เลือกคลังที่จะจ่ายของ:</label>' +
+          '<select id="popupLocSel" onchange="changePopupLoc(' + reqId + ', this.value)" class="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm font-semibold bg-white">' +
+            allowedLocations.map(l =>
+              '<option value="' + l.id + '" ' + (l.id === useLocId ? 'selected' : '') + '>🏢 ' + l.name + ' (' + l.code + ')</option>'
+            ).join('') +
+          '</select>' +
+        '</div>';
+    }
+
+    document.getElementById('mBody').innerHTML =
+      locSelectHTML +
       (req.purpose ? '<div class="bg-slate-50 p-3 rounded-lg text-sm"><span class="text-slate-500">วัตถุประสงค์:</span> ' + req.purpose + '</div>' : '') +
-      (req.rejection_reason ? '<div class="bg-red-50 p-3 rounded-lg text-sm text-red-700">เหตุผลไม่อนุมัติ: ' + req.rejection_reason + '</div>' : '') +
+      (req.rejection_reason ? '<div class="bg-red-50 p-3 rounded-lg text-sm text-red-700">เหตุผล: ' + req.rejection_reason + '</div>' : '') +
       '<div class="border rounded-xl overflow-hidden"><table class="w-full text-sm"><thead class="bg-slate-50 text-xs text-slate-600"><tr>' +
         '<th class="text-left p-2">สินค้า</th>' +
-        '<th class="text-center p-2 w-20">คงเหลือ<br>(' + (req.locations?.code || '-') + ')</th>' +
+        '<th class="text-center p-2 w-32">Stock</th>' +
         '<th class="text-center p-2 w-20">ขอเบิก</th>' +
         '<th class="text-center p-2 w-20">อนุมัติ</th>' +
       '</tr></thead><tbody class="divide-y">' +
       (items||[]).map(it => {
-        const stock = stockMap[it.products?.id] ?? 0;
+        const productId = it.products?.id;
+        const locStocks = stockByLoc[productId] || {};
+        const useLocCode = useLoc?.code;
+        const currentStock = useLocCode && locStocks[useLocCode] ? locStocks[useLocCode].qty : 0;
+
+        // Breakdown แสดง stock ของทุก location ที่มี
+        const breakdown = Object.values(locStocks).map(s =>
+          '<div class="text-[10px] ' + (s.id === useLocId ? 'font-bold text-blue-700' : 'text-slate-500') + '">' +
+            s.name + ': ' + s.qty + '</div>'
+        ).join('');
+
         const reqQ = Number(it.quantity_requested);
         const approved = it.quantity_approved ?? reqQ;
-        const enough = stock >= reqQ;
+        const enough = currentStock >= reqQ;
+
         return '<tr>' +
           '<td class="p-2"><div class="flex items-center gap-2">' +
             '<div class="w-8 h-8 bg-slate-100 rounded overflow-hidden flex items-center justify-center text-lg">' +
@@ -179,11 +224,11 @@
             '</div>' +
             '<div class="min-w-0"><div class="font-medium truncate">' + it.products?.name + '</div>' +
             '<div class="text-[10px] text-slate-500">' + it.products?.sku + '</div></div></div></td>' +
-          '<td class="text-center p-2 ' + (enough ? 'text-slate-700' : 'text-red-600 font-bold') + '">' + stock + '</td>' +
+          '<td class="text-center p-2"><div class="' + (enough ? 'text-slate-700' : 'text-red-600 font-bold') + '">' + currentStock + '</div>' + breakdown + '</td>' +
           '<td class="text-center p-2 font-medium">' + reqQ + '</td>' +
           '<td class="text-center p-2">' +
             (req.status === 'pending'
-              ? '<input type="number" min="0" max="' + stock + '" value="' + approved + '" data-item-id="' + it.id + '" class="approve-qty w-16 px-1 py-0.5 border rounded text-center text-sm">'
+              ? '<input type="number" min="0" max="' + currentStock + '" value="' + approved + '" data-item-id="' + it.id + '" class="approve-qty w-16 px-1 py-0.5 border rounded text-center text-sm">'
               : '<span class="font-bold">' + approved + '</span>') +
           '</td></tr>';
       }).join('') + '</tbody></table></div>';
@@ -201,6 +246,12 @@
     document.getElementById('modal').classList.remove('hidden');
   }
   window.openDetail = openDetail;
+
+  function changePopupLoc(reqId, newLocId) {
+    currentLocationOverride = Number(newLocId);
+    openDetail(reqId);
+  }
+  window.changePopupLoc = changePopupLoc;
 
   function closeModal() {
     document.getElementById('modal').classList.add('hidden');
@@ -220,9 +271,14 @@
       for (const u of updates) {
         await supabase.from('requisition_items').update({ quantity_approved: u.qty }).eq('id', u.id);
       }
-      const { error } = await supabase.from('requisitions').update({
+      const updatePayload = {
         status: 'approved', approved_by: me.id, approved_at: new Date().toISOString(),
-      }).eq('id', reqId);
+      };
+      // ถ้าใบไม่มี location → ใช้ที่ admin เลือกใน popup
+      if (currentLocationOverride) {
+        updatePayload.location_id = currentLocationOverride;
+      }
+      const { error } = await supabase.from('requisitions').update(updatePayload).eq('id', reqId);
       if (error) throw error;
       toast('อนุมัติแล้ว ✅', 'success');
       closeModal(); loadList(); loadCounts();
@@ -238,7 +294,7 @@
       rejection_reason: reason || '-',
     }).eq('id', reqId);
     if (error) { toast(error.message, 'error'); return; }
-    toast('บันทึกแล้ว', 'success');
+    toast('บันทึก', 'success');
     closeModal(); loadList(); loadCounts();
   }
   window.rejectReq = rejectReq;
