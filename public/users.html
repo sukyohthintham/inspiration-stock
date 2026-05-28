@@ -11,247 +11,238 @@
 </head>
 <body class="min-h-screen pb-10">
   <main class="max-w-7xl mx-auto px-4 py-6">
-
     <div class="flex items-center justify-between mb-1">
       <h1 class="text-2xl font-bold text-slate-900">จัดการผู้ใช้ 👥</h1>
-      <div class="flex gap-2">
-        <span id="totalCount" class="px-3 py-1.5 bg-slate-100 rounded-lg text-sm font-medium">- คน</span>
-      </div>
+      <span id="totalCount" class="px-3 py-1.5 bg-slate-100 rounded-lg text-sm font-medium">- คน</span>
     </div>
-    <p class="text-sm text-slate-500 mb-6">เปลี่ยนสิทธิ เปิด/ปิดการใช้งาน · เฉพาะ Admin เท่านั้น</p>
+    <p class="text-sm text-slate-500 mb-6">เปลี่ยน role · จัดการ Location · เปิด/ปิดใช้งาน · เฉพาะ Admin</p>
 
-    <!-- Role legend -->
     <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4 text-sm">
-      <div class="font-medium text-blue-900 mb-2">📖 คำอธิบายระดับสิทธิ</div>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs text-slate-700">
-        <div><span class="inline-block w-12 px-2 py-0.5 bg-slate-200 rounded text-center font-mono">staff</span> &nbsp; เบิกของได้ + ดูประวัติของตัวเอง</div>
-        <div><span class="inline-block w-16 px-2 py-0.5 bg-blue-200 rounded text-center font-mono">manager</span> &nbsp; เพิ่ม: อนุมัติ, รับเข้า, สินค้า, รายงาน</div>
-        <div><span class="inline-block w-12 px-2 py-0.5 bg-purple-200 rounded text-center font-mono">admin</span> &nbsp; เพิ่ม: จัดการผู้ใช้ + ทุกฟังก์ชัน</div>
+      <div class="font-medium text-blue-900 mb-2">📖 คำอธิบาย</div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-slate-700">
+        <div>• <b>Role</b>: staff (เบิก) / manager (อนุมัติ+รับเข้า) / admin (จัดการระบบ)</div>
+        <div>• <b>Locations</b>: คลังที่เข้าถึงได้ — <b>ปล่อยว่าง = Super</b> (เห็นทั้งหมด)</div>
       </div>
     </div>
 
-    <!-- Filter -->
     <div class="bg-white rounded-2xl p-4 shadow-sm mb-4 flex flex-wrap gap-3 items-center">
-      <input id="searchInput" type="text" placeholder="🔍 ค้นหา ชื่อ/แผนก/email..."
-        class="flex-1 min-w-[200px] px-4 py-2 border border-slate-200 rounded-lg text-sm">
+      <input id="searchInput" type="text" placeholder="🔍 ค้นหา..." class="flex-1 min-w-[200px] px-4 py-2 border border-slate-200 rounded-lg text-sm">
       <select id="roleFilter" class="px-3 py-2 border border-slate-200 rounded-lg text-sm">
-        <option value="">ทุกระดับสิทธิ</option>
+        <option value="">ทุกระดับ</option>
         <option value="admin">Admin</option>
         <option value="manager">Manager</option>
         <option value="staff">Staff</option>
       </select>
-      <select id="statusFilter" class="px-3 py-2 border border-slate-200 rounded-lg text-sm">
-        <option value="">ทุกสถานะ</option>
-        <option value="active">ใช้งาน</option>
-        <option value="inactive">ปิดใช้งาน</option>
-      </select>
     </div>
 
-    <!-- Table -->
     <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
       <table class="w-full text-sm">
         <thead class="bg-slate-50 text-xs text-slate-600">
           <tr>
-            <th class="text-left p-3">ชื่อ-นามสกุล</th>
-            <th class="text-left p-3">Email</th>
+            <th class="text-left p-3">ชื่อ</th>
             <th class="text-left p-3">แผนก</th>
-            <th class="text-left p-3">เบอร์โทร</th>
-            <th class="text-center p-3">ระดับสิทธิ</th>
+            <th class="text-center p-3">Role</th>
+            <th class="text-left p-3">🏢 Locations</th>
             <th class="text-center p-3">สถานะ</th>
-            <th class="text-center p-3">การเบิก</th>
-            <th class="text-left p-3">สร้างเมื่อ</th>
+            <th class="text-center p-3">เบิก</th>
+            <th class="p-3"></th>
           </tr>
         </thead>
         <tbody id="userBody" class="divide-y"></tbody>
       </table>
-      <div id="emptyState" class="hidden text-center py-12 text-slate-500">ไม่พบผู้ใช้</div>
     </div>
-
-    <!-- Bulk actions hint -->
-    <p class="text-xs text-slate-500 mt-4">
-      💡 <strong>เคล็ดลับ:</strong> เปลี่ยน role โดยคลิก dropdown ในคอลัมน์ "ระดับสิทธิ" ค่าจะถูกบันทึกทันที · เปิด/ปิดการใช้งานโดยคลิก toggle ในคอลัมน์ "สถานะ"
-    </p>
   </main>
+
+  <!-- Location Mapping Modal -->
+  <div id="locModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/50" onclick="closeLocModal()"></div>
+    <div class="absolute inset-x-4 top-20 max-w-lg mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
+      <div class="px-5 py-3 border-b flex items-center justify-between bg-slate-50">
+        <div>
+          <div class="font-bold text-lg">🏢 จัดการ Location</div>
+          <div id="locUserName" class="text-xs text-slate-500"></div>
+        </div>
+        <button onclick="closeLocModal()" class="text-slate-400 hover:text-slate-700 text-xl">✕</button>
+      </div>
+      <div class="p-5">
+        <p class="text-xs text-slate-600 mb-3">เลือก location ที่ user นี้เข้าถึงได้ — <b>ไม่เลือกอะไรเลย = Super</b> (เห็นทุก location)</p>
+        <div id="locCheckboxes" class="space-y-2"></div>
+      </div>
+      <div class="border-t px-5 py-3 bg-slate-50 flex justify-end gap-2">
+        <button onclick="closeLocModal()" class="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-sm">ยกเลิก</button>
+        <button id="saveLocBtn" class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-sm font-medium">บันทึก</button>
+      </div>
+    </div>
+  </div>
 
   <script src="js/config.js"></script>
   <script src="js/sidebar.js"></script>
   <script>
   let me = null;
   let users = [];
+  let locations = [];
+  let userLocMap = {}; // user_id -> [location_id]
+  let editingUserId = null;
 
   (async () => {
     me = await setupAdminLayout('users');
     if (!me) return;
-
-    // เฉพาะ admin เท่านั้นที่จัดการ user ได้
     if (me.role !== 'admin') {
       alert('หน้านี้สำหรับ Admin เท่านั้น');
       window.location.href = 'dashboard.html';
       return;
     }
+    await loadLocations();
     await loadUsers();
   })();
 
+  async function loadLocations() {
+    const { data } = await supabase.from('locations').select('*').eq('is_active', true).order('display_order');
+    locations = data || [];
+  }
+
   async function loadUsers() {
-    // โหลด profiles + นับจำนวนใบเบิกของแต่ละคน
-    const { data: profiles, error } = await supabase
-      .from('profiles')
-      .select('id, full_name, nickname, department, phone, role, is_active, avatar_url, created_at')
-      .order('created_at', { ascending: true });
+    const { data: profiles } = await supabase.from('profiles')
+      .select('id, full_name, nickname, department, phone, role, is_active, created_at')
+      .order('created_at');
+    const { data: counts } = await supabase.from('requisitions').select('requested_by');
+    const cm = {}; (counts || []).forEach(r => cm[r.requested_by] = (cm[r.requested_by] || 0) + 1);
 
-    if (error) { toast('โหลดข้อมูลผิดพลาด: ' + error.message, 'error'); return; }
-
-    // ดึง email จาก auth.users ผ่าน RPC หรือเก็บใน metadata
-    // เนื่องจาก client ไม่สามารถ query auth.users ตรงๆ ได้ — ใช้ user metadata หรือสร้าง view
-    // ใน MVP นี้: ใช้ฟิลด์อื่นแสดง (เช่น user.id ถ้าจำเป็น)
-
-    // นับใบเบิกของแต่ละคน
-    const { data: counts } = await supabase
-      .from('requisitions')
-      .select('requested_by');
-    const reqCountMap = {};
-    (counts || []).forEach(r => {
-      reqCountMap[r.requested_by] = (reqCountMap[r.requested_by] || 0) + 1;
+    const { data: ulRows } = await supabase.from('user_locations').select('user_id, location_id');
+    userLocMap = {};
+    (ulRows || []).forEach(r => {
+      if (!userLocMap[r.user_id]) userLocMap[r.user_id] = [];
+      userLocMap[r.user_id].push(r.location_id);
     });
 
-    users = (profiles || []).map(p => ({
-      ...p,
-      req_count: reqCountMap[p.id] || 0,
-    }));
-
-    document.getElementById('totalCount').textContent = `${users.length} คน`;
+    users = (profiles || []).map(p => ({ ...p, req_count: cm[p.id] || 0 }));
+    document.getElementById('totalCount').textContent = users.length + ' คน';
     renderTable();
   }
 
   function renderTable() {
     const term = (document.getElementById('searchInput').value || '').toLowerCase();
-    const roleF = document.getElementById('roleFilter').value;
-    const statusF = document.getElementById('statusFilter').value;
-
+    const rf = document.getElementById('roleFilter').value;
     let list = users;
-    if (term) list = list.filter(u =>
-      (u.full_name || '').toLowerCase().includes(term) ||
-      (u.department || '').toLowerCase().includes(term) ||
-      (u.phone || '').includes(term)
-    );
-    if (roleF) list = list.filter(u => u.role === roleF);
-    if (statusF === 'active')   list = list.filter(u => u.is_active);
-    if (statusF === 'inactive') list = list.filter(u => !u.is_active);
-
-    document.getElementById('emptyState').classList.toggle('hidden', list.length > 0);
+    if (term) list = list.filter(u => (u.full_name||'').toLowerCase().includes(term) || (u.department||'').toLowerCase().includes(term));
+    if (rf) list = list.filter(u => u.role === rf);
 
     const roleColors = {
-      admin:   'bg-purple-100 text-purple-700 border-purple-200',
-      manager: 'bg-blue-100   text-blue-700   border-blue-200',
-      staff:   'bg-slate-100  text-slate-700  border-slate-200',
+      admin:   'bg-purple-100 text-purple-700',
+      manager: 'bg-blue-100 text-blue-700',
+      staff:   'bg-slate-100 text-slate-700',
     };
 
     document.getElementById('userBody').innerHTML = list.map(u => {
       const isMe = u.id === me.id;
       const initial = (u.full_name || '?').charAt(0);
-      return `
-        <tr class="hover:bg-slate-50 ${!u.is_active ? 'opacity-50' : ''}">
-          <td class="p-3">
-            <div class="flex items-center gap-2">
-              <div class="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 text-white flex items-center justify-center text-sm font-medium">
-                ${initial}
-              </div>
-              <div>
-                <div class="font-medium">${u.full_name || '-'}${isMe ? ' <span class="text-[10px] text-blue-600">(คุณ)</span>' : ''}</div>
-                ${u.nickname ? `<div class="text-[10px] text-slate-500">${u.nickname}</div>` : ''}
-              </div>
-            </div>
-          </td>
-          <td class="p-3 text-xs text-slate-600">
-            <button onclick="showUserEmail('${u.id}', this)" class="text-blue-600 hover:underline">ดู email</button>
-          </td>
-          <td class="p-3 text-xs">${u.department || '-'}</td>
-          <td class="p-3 text-xs font-mono">${u.phone || '-'}</td>
-          <td class="p-3 text-center">
-            <select onchange="changeRole('${u.id}', this.value, '${u.role}')"
-              ${isMe ? 'disabled title="ไม่สามารถเปลี่ยน role ของตัวเองได้"' : ''}
-              class="text-xs px-2 py-1 border rounded-lg font-mono ${roleColors[u.role]}">
-              <option value="staff"   ${u.role==='staff'?'selected':''}>staff</option>
-              <option value="manager" ${u.role==='manager'?'selected':''}>manager</option>
-              <option value="admin"   ${u.role==='admin'?'selected':''}>admin</option>
-            </select>
-          </td>
-          <td class="p-3 text-center">
-            <button onclick="toggleActive('${u.id}', ${!u.is_active})"
-              ${isMe ? 'disabled' : ''}
-              class="text-xs px-3 py-1 rounded-full font-medium ${u.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'} ${isMe ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'}">
-              ${u.is_active ? '● ใช้งาน' : '○ ปิด'}
-            </button>
-          </td>
-          <td class="p-3 text-center">
-            <span class="text-xs font-bold ${u.req_count > 0 ? 'text-blue-600' : 'text-slate-400'}">${u.req_count}</span>
-            <span class="text-[10px] text-slate-500 block">ใบ</span>
-          </td>
-          <td class="p-3 text-xs text-slate-500">${fmtDateOnly(u.created_at)}</td>
-        </tr>
-      `;
-    }).join('');
+      const userLocs = userLocMap[u.id] || [];
+      const locDisplay = userLocs.length === 0
+        ? '<span class="text-purple-700 font-bold text-xs">★ Super (ทุก location)</span>'
+        : userLocs.map(id => {
+            const l = locations.find(x => x.id === id);
+            return l ? '<span class="inline-block text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 mr-1">🏢 ' + l.name + '</span>' : '';
+          }).join('');
+      return '<tr class="hover:bg-slate-50 ' + (u.is_active ? '' : 'opacity-50') + '">' +
+        '<td class="p-3"><div class="flex items-center gap-2">' +
+          '<div class="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 text-white flex items-center justify-center text-sm font-medium">' + initial + '</div>' +
+          '<div><div class="font-medium">' + (u.full_name || '-') + (isMe ? ' <span class="text-[10px] text-blue-600">(คุณ)</span>' : '') + '</div></div>' +
+        '</div></td>' +
+        '<td class="p-3 text-xs">' + (u.department || '-') + '</td>' +
+        '<td class="p-3 text-center">' +
+          '<select onchange="changeRole(\'' + u.id + '\', this.value, \'' + u.role + '\')" ' + (isMe ? 'disabled' : '') + ' class="text-xs px-2 py-1 border rounded-lg font-mono ' + roleColors[u.role] + '">' +
+            '<option value="staff" ' + (u.role==='staff'?'selected':'') + '>staff</option>' +
+            '<option value="manager" ' + (u.role==='manager'?'selected':'') + '>manager</option>' +
+            '<option value="admin" ' + (u.role==='admin'?'selected':'') + '>admin</option>' +
+          '</select>' +
+        '</td>' +
+        '<td class="p-3">' +
+          '<div class="flex items-center gap-2">' +
+            '<div class="flex-1 max-w-[200px] flex flex-wrap gap-0.5">' + locDisplay + '</div>' +
+            '<button onclick="openLocModal(\'' + u.id + '\')" class="text-xs px-2 py-1 rounded bg-slate-100 hover:bg-slate-200">⚙️ ตั้ง</button>' +
+          '</div>' +
+        '</td>' +
+        '<td class="p-3 text-center">' +
+          '<button onclick="toggleActive(\'' + u.id + '\', ' + (!u.is_active) + ')" ' + (isMe ? 'disabled' : '') + ' class="text-xs px-3 py-1 rounded-full font-medium ' + (u.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700') + '">' +
+            (u.is_active ? '● ใช้งาน' : '○ ปิด') + '</button>' +
+        '</td>' +
+        '<td class="p-3 text-center"><span class="text-xs font-bold ' + (u.req_count > 0 ? 'text-blue-600' : 'text-slate-400') + '">' + u.req_count + '</span></td>' +
+        '<td class="p-3 text-xs text-slate-500">' + fmtDateOnly(u.created_at) + '</td>' +
+      '</tr>';
+    }).join('') || '<tr><td colspan="7" class="text-center text-slate-400 p-4">ไม่พบ user</td></tr>';
   }
 
-  // เปลี่ยน role
   async function changeRole(userId, newRole, oldRole) {
     if (newRole === oldRole) return;
-    if (!confirmDialog(`เปลี่ยนระดับสิทธิเป็น "${newRole}" ใช่หรือไม่?`)) {
-      await loadUsers();
-      return;
-    }
-    const { error } = await supabase
-      .from('profiles')
-      .update({ role: newRole, updated_at: new Date().toISOString() })
-      .eq('id', userId);
-    if (error) {
-      toast('ผิดพลาด: ' + error.message, 'error');
-      await loadUsers();
-      return;
-    }
-    toast(`เปลี่ยน role เป็น ${newRole} เรียบร้อย ✅`, 'success');
+    if (!confirmDialog('เปลี่ยน role เป็น "' + newRole + '" ?')) { await loadUsers(); return; }
+    const { error } = await supabase.from('profiles').update({ role: newRole, updated_at: new Date().toISOString() }).eq('id', userId);
+    if (error) { toast('ผิดพลาด: ' + error.message, 'error'); await loadUsers(); return; }
+    toast('เปลี่ยน role เป็น ' + newRole, 'success');
     await loadUsers();
   }
   window.changeRole = changeRole;
 
-  // Toggle active
   async function toggleActive(userId, newStatus) {
     const action = newStatus ? 'เปิด' : 'ปิด';
-    if (!confirmDialog(`${action}การใช้งานของ user นี้?`)) return;
-    const { error } = await supabase
-      .from('profiles')
-      .update({ is_active: newStatus, updated_at: new Date().toISOString() })
-      .eq('id', userId);
+    if (!confirmDialog(action + 'ใช้งาน?')) return;
+    const { error } = await supabase.from('profiles').update({ is_active: newStatus, updated_at: new Date().toISOString() }).eq('id', userId);
     if (error) { toast('ผิดพลาด: ' + error.message, 'error'); return; }
-    toast(`${action}การใช้งานเรียบร้อย`, 'success');
+    toast(action + 'เรียบร้อย', 'success');
     await loadUsers();
   }
   window.toggleActive = toggleActive;
 
-  // แสดง email (เนื่องจาก profiles ไม่มี email — ดึงผ่าน RPC ถ้ามี user)
-  async function showUserEmail(userId, btn) {
-    // Note: ใน Supabase free tier, client ไม่สามารถดู email ของคนอื่นได้
-    // ต้องใช้ admin API ฝั่ง server หรือเก็บ email ไว้ใน profiles
-    btn.textContent = '...';
-    const { data, error } = await supabase.rpc('get_user_email', { p_user_id: userId });
-    if (error || !data) {
-      btn.textContent = 'ไม่สามารถแสดงได้';
-      btn.disabled = true;
-      return;
-    }
-    btn.textContent = data;
-    btn.classList.remove('text-blue-600', 'hover:underline');
-    btn.disabled = true;
+  // ----- LOCATION MAPPING -----
+  function openLocModal(userId) {
+    editingUserId = userId;
+    const u = users.find(x => x.id === userId);
+    document.getElementById('locUserName').textContent = u.full_name + ' (' + u.role + ')';
+    const current = userLocMap[userId] || [];
+    document.getElementById('locCheckboxes').innerHTML = locations.map(l => {
+      const checked = current.includes(l.id) ? 'checked' : '';
+      return '<label class="flex items-center gap-3 p-3 rounded-lg border hover:bg-slate-50 cursor-pointer">' +
+        '<input type="checkbox" value="' + l.id + '" ' + checked + ' class="loc-cb w-5 h-5 accent-blue-600">' +
+        '<div class="flex-1"><div class="font-medium">🏢 ' + l.name + '</div>' +
+        '<div class="text-xs text-slate-500">' + l.code + (l.description ? ' · ' + l.description : '') + '</div></div>' +
+      '</label>';
+    }).join('');
+    document.getElementById('locModal').classList.remove('hidden');
   }
-  window.showUserEmail = showUserEmail;
+  window.openLocModal = openLocModal;
 
-  document.getElementById('searchInput').addEventListener('input', renderTable);
-  document.getElementById('roleFilter').addEventListener('change', renderTable);
-  document.getElementById('statusFilter').addEventListener('change', renderTable);
+  function closeLocModal() { document.getElementById('locModal').classList.add('hidden'); }
+  window.closeLocModal = closeLocModal;
 
-  // Realtime: ถ้ามีคนเปลี่ยน profile ให้ refresh
+  document.getElementById('saveLocBtn').addEventListener('click', async () => {
+    const selected = Array.from(document.querySelectorAll('.loc-cb:checked')).map(cb => Number(cb.value));
+    const btn = document.getElementById('saveLocBtn');
+    btn.disabled = true; btn.textContent = 'กำลังบันทึก...';
+    try {
+      // Delete all existing mapping
+      await supabase.from('user_locations').delete().eq('user_id', editingUserId);
+      // Insert new mapping
+      if (selected.length > 0) {
+        const rows = selected.map(lid => ({ user_id: editingUserId, location_id: lid }));
+        const { error } = await supabase.from('user_locations').insert(rows);
+        if (error) throw error;
+      }
+      const msg = selected.length === 0 ? 'ตั้งเป็น Super (เห็นทุก location)' : 'ผูก ' + selected.length + ' location';
+      toast(msg, 'success');
+      closeLocModal();
+      await loadUsers();
+    } catch (e) {
+      toast('ผิดพลาด: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = 'บันทึก';
+    }
+  });
+
+  ['searchInput','roleFilter'].forEach(id =>
+    document.getElementById(id).addEventListener(id === 'searchInput' ? 'input' : 'change', renderTable));
+
   supabase.channel('users-rt')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => loadUsers())
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'user_locations' }, () => loadUsers())
     .subscribe();
   </script>
 </body>
