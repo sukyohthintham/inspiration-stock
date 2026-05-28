@@ -34,6 +34,12 @@
       <select id="locFilter" class="px-3 py-2 border-2 border-blue-300 rounded-lg text-sm font-medium bg-blue-50">
         <option value="">ทุกคลัง (สรุปรวม)</option>
       </select>
+      <select id="stockFilter" class="px-3 py-2 border border-slate-200 rounded-lg text-sm">
+        <option value="">ทุกสถานะสต๊อก</option>
+        <option value="in_stock">มีของ (>0)</option>
+        <option value="out">หมด (=0)</option>
+        <option value="low">ใกล้หมด (≤ Min)</option>
+      </select>
       <select id="activeFilter" class="px-3 py-2 border border-slate-200 rounded-lg text-sm">
         <option value="active">ใช้งานอยู่</option>
         <option value="inactive">ปิดใช้งาน</option>
@@ -194,6 +200,7 @@
     const term = (document.getElementById('searchInput').value || '').toLowerCase();
     const cat = document.getElementById('catFilter').value;
     const locId = document.getElementById('locFilter').value;
+    const stockF = document.getElementById('stockFilter').value;
     const act = document.getElementById('activeFilter').value;
 
     let list = products;
@@ -202,6 +209,24 @@
     if (term) list = list.filter(p =>
       (p.name||'').toLowerCase().includes(term) || (p.sku||'').toLowerCase().includes(term));
     if (cat) list = list.filter(p => p.category_id === Number(cat));
+
+    // Stock filter (เคารพ locFilter ที่เลือก)
+    if (stockF) {
+      list = list.filter(p => {
+        const stockMap = stocksByProduct[p.id] || {};
+        let qty;
+        if (locId) {
+          const loc = locations.find(l => l.id === Number(locId));
+          qty = loc ? (stockMap[loc.code]?.qty ?? 0) : 0;
+        } else {
+          qty = Number(p.current_stock);
+        }
+        if (stockF === 'in_stock') return qty > 0;
+        if (stockF === 'out')      return qty <= 0;
+        if (stockF === 'low')      return qty > 0 && qty <= Number(p.min_stock);
+        return true;
+      });
+    }
 
     document.getElementById('totalCount').textContent = list.length + ' รายการ';
 
@@ -255,7 +280,7 @@
     }).join('') || '<tr><td colspan="10" class="text-center text-slate-400 p-4">ไม่พบสินค้า</td></tr>';
   }
 
-  ['searchInput','catFilter','locFilter','activeFilter'].forEach(id => {
+  ['searchInput','catFilter','locFilter','stockFilter','activeFilter'].forEach(id => {
     document.getElementById(id).addEventListener(id === 'searchInput' ? 'input' : 'change', renderTable);
   });
 
