@@ -560,6 +560,103 @@
     closeImportModal(); await loadProducts();
     btn.disabled = false; btn.textContent = 'ยืนยันนำเข้า';
   });
+
+  // ============ IMAGE LIGHTBOX ============
+  window.openImgModal = function(url) {
+    if (!url) return;
+    document.getElementById('imgModalImg').src = url;
+    document.getElementById('imgModal').classList.remove('hidden');
+  };
+  window.closeImgModal = function() {
+    document.getElementById('imgModal').classList.add('hidden');
+  };
+
+  // ============ DETAIL MODAL ============
+  window.openDetailModal = async function(productId) {
+    const p = products.find(x => x.id === productId);
+    if (!p) return;
+    document.getElementById('dmTitle').textContent = p.name;
+    document.getElementById('dmSku').textContent = p.sku + ' · ' + (p.categories?.icon || '') + ' ' + (p.categories?.name || '-');
+    document.getElementById('dmBody').innerHTML = '<div class="text-center text-slate-500 py-10">⏳ กำลังโหลดประวัติ...</div>';
+    document.getElementById('detailModal').classList.remove('hidden');
+
+    const stockMap = stocksByProduct[productId] || {};
+    const { data: movs } = await supabase.from('stock_movements')
+      .select('*, locations:location_id(name, code), to_loc:to_location_id(name, code), profiles:created_by(full_name)')
+      .eq('product_id', productId).order('created_at', { ascending: false }).limit(200);
+
+    const typeBadge = {
+      IN: { c: 'bg-green-100 text-green-700', t: '📥 รับเข้า' },
+      OUT: { c: 'bg-red-100 text-red-700', t: '📤 จ่ายออก' },
+      ADJUST: { c: 'bg-blue-100 text-blue-700', t: '🔧 ปรับปรุง' },
+      TRANSFER_IN: { c: 'bg-purple-100 text-purple-700', t: '↪ รับโอน' },
+      TRANSFER_OUT: { c: 'bg-amber-100 text-amber-700', t: '↩ โอนออก' },
+    };
+
+    const totalIn  = (movs||[]).filter(m => m.movement_type === 'IN').reduce((s, m) => s + Number(m.quantity), 0);
+    const totalOut = (movs||[]).filter(m => m.movement_type === 'OUT').reduce((s, m) => s + Math.abs(Number(m.quantity)), 0);
+
+    let html = '<div class="grid grid-cols-1 md:grid-cols-3 gap-4">' +
+      '<div class="md:col-span-1"><div onclick="openImgModal(\'' + (p.image_url || '') + '\')" class="aspect-square bg-slate-100 rounded-xl overflow-hidden flex items-center justify-center text-7xl cursor-pointer hover:ring-2 hover:ring-blue-400">' +
+        (p.image_url ? '<img src="' + p.image_url + '" class="w-full h-full object-cover">' : '📦') + '</div></div>' +
+      '<div class="md:col-span-2 grid grid-cols-2 gap-3 text-sm">' +
+        '<div class="bg-slate-50 p-3 rounded-lg"><div class="text-[10px] text-slate-500">หน่วย</div><div class="font-bold">' + p.unit + '</div></div>' +
+        '<div class="bg-slate-50 p-3 rounded-lg"><div class="text-[10px] text-slate-500">ต้นทุน/หน่วย</div><div class="font-bold text-blue-700">' + fmtCurrency(p.unit_cost) + ' ฿</div></div>' +
+        '<div class="bg-slate-50 p-3 rounded-lg"><div class="text-[10px] text-slate-500">Min/Max</div><div class="font-bold">' + Number(p.min_stock) + ' / ' + Number(p.max_stock) + '</div></div>' +
+        '<div class="bg-slate-50 p-3 rounded-lg"><div class="text-[10px] text-slate-500">มูลค่ารวม</div><div class="font-bold text-amber-700">' + fmtCurrency(Number(p.current_stock) * Number(p.unit_cost || 0)) + ' ฿</div></div>' +
+        '<div class="col-span-2 bg-green-50 border border-green-200 p-3 rounded-lg"><div class="text-[10px] text-green-700">📥 รับเข้ารวม</div><div class="font-bold text-green-700">' + totalIn + ' ' + p.unit + '</div></div>' +
+        '<div class="col-span-2 bg-red-50 border border-red-200 p-3 rounded-lg"><div class="text-[10px] text-red-700">📤 จ่ายออกรวม</div><div class="font-bold text-red-700">' + totalOut + ' ' + p.unit + '</div></div>' +
+      '</div></div>';
+
+    html += '<div class="border rounded-xl overflow-hidden"><div class="bg-slate-50 px-3 py-2 font-semibold text-sm">🏢 Stock ตามคลัง</div><table class="w-full text-sm"><tbody class="divide-y">';
+    locations.forEach(l => {
+      const s = stockMap[l.code];
+      const qty = s ? s.qty : 0;
+      const cls = qty <= 0 ? 'text-slate-400' : qty <= p.min_stock ? 'text-amber-600 font-semibold' : 'text-blue-700 font-bold';
+      html += '<tr><td class="p-2">🏢 ' + l.name + ' <span class="text-[10px] text-slate-500 font-mono">' + l.code + '</span></td><td class="p-2 text-right ' + cls + '">' + qty + ' ' + p.unit + '</td></tr>';
+    });
+    html += '<tr class="bg-slate-50 font-bold"><td class="p-2">รวม</td><td class="p-2 text-right text-blue-700">' + Number(p.current_stock) + ' ' + p.unit + '</td></tr></tbody></table></div>';
+
+    html += '<div class="border rounded-xl overflow-hidden"><div class="bg-slate-50 px-3 py-2 font-semibold text-sm">📜 ประวัติ Movement (' + (movs||[]).length + ' รายการ)</div>';
+    if (!movs || movs.length === 0) {
+      html += '<div class="p-6 text-center text-slate-400 text-sm">ยังไม่มีประวัติ</div>';
+    } else {
+      html += '<div class="overflow-x-auto"><table class="w-full text-xs"><thead class="bg-slate-50"><tr>' +
+        '<th class="p-2 text-left">วันที่</th>' +
+        '<th class="p-2 text-center">ประเภท</th>' +
+        '<th class="p-2 text-left">🏢 คลัง</th>' +
+        '<th class="p-2 text-center">จำนวน</th>' +
+        '<th class="p-2 text-center">คงเหลือ</th>' +
+        '<th class="p-2 text-left">อ้างอิง</th>' +
+        '<th class="p-2 text-left">ผู้ทำ</th>' +
+        '<th class="p-2 text-left">หมายเหตุ</th>' +
+        '</tr></thead><tbody class="divide-y">';
+      movs.forEach(m => {
+        const tb = typeBadge[m.movement_type] || { c: 'bg-slate-100 text-slate-700', t: m.movement_type };
+        const qty = Number(m.quantity);
+        const qtyDisp = (qty > 0 ? '+' : '') + qty;
+        const qtyCls = qty > 0 ? 'text-green-600 font-bold' : qty < 0 ? 'text-red-600 font-bold' : '';
+        const locName = m.locations?.name || '-';
+        const toLoc = m.to_loc ? ' → ' + m.to_loc.name : '';
+        html += '<tr class="hover:bg-slate-50">' +
+          '<td class="p-2 whitespace-nowrap">' + fmtDate(m.created_at) + '</td>' +
+          '<td class="p-2 text-center"><span class="px-2 py-0.5 rounded ' + tb.c + '">' + tb.t + '</span></td>' +
+          '<td class="p-2">🏢 ' + locName + toLoc + '</td>' +
+          '<td class="p-2 text-center ' + qtyCls + '">' + qtyDisp + '</td>' +
+          '<td class="p-2 text-center">' + (m.balance_after ?? '-') + '</td>' +
+          '<td class="p-2 font-mono text-[10px]">' + (m.reference_no || '-') + '</td>' +
+          '<td class="p-2">' + (m.profiles?.full_name || '-') + '</td>' +
+          '<td class="p-2 text-slate-500">' + (m.notes || '') + '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+    html += '</div>';
+    document.getElementById('dmBody').innerHTML = html;
+  };
+  window.closeDetailModal = function() {
+    document.getElementById('detailModal').classList.add('hidden');
+  };
+
   </script>
 
   <!-- IMAGE LIGHTBOX -->
