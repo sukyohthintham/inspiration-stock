@@ -272,6 +272,7 @@
         '<td class="p-2 text-right text-sm">' + fmtCurrency(p.unit_cost) + '</td>' +
         '<td class="p-2 whitespace-nowrap">' +
           '<button onclick="openEdit(' + p.id + ')" class="text-blue-600 text-sm hover:underline mr-2">แก้ไข</button>' +
+          '<button onclick="openAdjustModal(' + p.id + ')" class="text-amber-600 text-sm hover:underline mr-2">🔧 ปรับ</button>' +
           (p.is_active
             ? '<button onclick="deleteProduct(' + p.id + ", '" + (p.name || '').replace(/'/g, "\\'") + "'" + ')" class="text-red-600 text-sm hover:underline">🗑️ ลบ</button>'
             : '<button onclick="restoreProduct(' + p.id + ')" class="text-green-600 text-sm hover:underline">♻ คืน</button>') +
@@ -657,7 +658,87 @@
     document.getElementById('detailModal').classList.add('hidden');
   };
 
-  </script>
+  
+  // ============ ADJUST STOCK ============
+  let _adjProductId = null;
+
+  window.openAdjustModal = function(productId) {
+    const p = products.find(x => x.id === productId);
+    if (!p) return;
+    _adjProductId = productId;
+    document.getElementById('adjProductInfo').textContent = p.sku + ' · ' + p.name;
+    const stockMap = stocksByProduct[productId] || {};
+    const opts = locations.map(l => {
+      const qty = stockMap[l.code]?.qty ?? 0;
+      return '<option value="' + l.id + '" data-qty="' + qty + '" data-code="' + l.code + '">🏢 ' + l.name + ' (ปัจจุบัน: ' + qty + ' ' + p.unit + ')</option>';
+    }).join('');
+    document.getElementById('adjLocSel').innerHTML = opts;
+    const defaultLoc = locations.find(l => (stockMap[l.code]?.qty ?? 0) > 0) || locations.find(l => l.code === 'WAREHOUSE') || locations[0];
+    if (defaultLoc) document.getElementById('adjLocSel').value = defaultLoc.id;
+    updateAdjustCurrent();
+    document.getElementById('adjNewQty').value = '';
+    document.getElementById('adjReason').value = '';
+    document.getElementById('adjReasonPreset').value = '';
+    document.getElementById('adjDiff').textContent = '';
+    document.getElementById('adjustModal').classList.remove('hidden');
+  };
+
+  window.closeAdjustModal = function() {
+    document.getElementById('adjustModal').classList.add('hidden');
+    _adjProductId = null;
+  };
+
+  function updateAdjustCurrent() {
+    const sel = document.getElementById('adjLocSel');
+    const opt = sel.options[sel.selectedIndex];
+    const qty = Number(opt?.dataset?.qty || 0);
+    document.getElementById('adjCurrentQty').textContent = qty;
+    updateDiff();
+  }
+  function updateDiff() {
+    const cur = Number(document.getElementById('adjCurrentQty').textContent || 0);
+    const nq = Number(document.getElementById('adjNewQty').value || 0);
+    const d = nq - cur;
+    const el = document.getElementById('adjDiff');
+    if (!document.getElementById('adjNewQty').value) { el.textContent = ''; return; }
+    if (d === 0) el.innerHTML = '<span class="text-slate-500">ไม่มีการเปลี่ยนแปลง</span>';
+    else if (d > 0) el.innerHTML = '<span class="text-green-700 font-bold">↑ เพิ่ม +' + d + '</span>';
+    else el.innerHTML = '<span class="text-red-700 font-bold">↓ ลด ' + d + '</span>';
+  }
+
+  // Setup listeners after DOM ready
+  setTimeout(function(){
+    const ls = document.getElementById('adjLocSel');
+    const nq = document.getElementById('adjNewQty');
+    if (ls) ls.addEventListener('change', updateAdjustCurrent);
+    if (nq) nq.addEventListener('input', updateDiff);
+    const sb = document.getElementById('adjSaveBtn');
+    if (sb) sb.addEventListener('click', async () => {
+      const locId = Number(document.getElementById('adjLocSel').value);
+      const newQty = Number(document.getElementById('adjNewQty').value);
+      const reason = document.getElementById('adjReason').value.trim();
+      if (!locId) { toast('กรุณาเลือกคลัง', 'warning'); return; }
+      if (isNaN(newQty) || newQty < 0) { toast('จำนวนไม่ถูกต้อง', 'warning'); return; }
+      if (!reason) { toast('กรุณาระบุเหตุผล', 'warning'); return; }
+      const cur = Number(document.getElementById('adjCurrentQty').textContent || 0);
+      if (newQty === cur) { toast('จำนวนเท่าเดิม', 'info'); return; }
+      if (!confirmDialog('ยืนยันปรับจาก ' + cur + ' เป็น ' + newQty + '?')) return;
+      sb.disabled = true; sb.textContent = 'กำลังบันทึก...';
+      try {
+        const { error } = await supabase.rpc('adjust_stock', {
+          p_product_id: _adjProductId, p_location_id: locId,
+          p_new_quantity: newQty, p_user_id: me.id, p_reason: reason,
+        });
+        if (error) throw error;
+        toast('ปรับปรุงเรียบร้อย', 'success');
+        window.closeAdjustModal();
+        await loadProducts();
+      } catch (e) { toast('ผิดพลาด: ' + e.message, 'error'); }
+      finally { sb.disabled = false; sb.textContent = 'บันทึก'; }
+    });
+  }, 500);
+
+</script>
 
   <!-- IMAGE LIGHTBOX -->
   <div id="imgModal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/80 cursor-pointer" onclick="closeImgModal()">
@@ -677,6 +758,55 @@
         <button onclick="closeDetailModal()" class="text-slate-400 hover:text-slate-700 text-xl">✕</button>
       </div>
       <div id="dmBody" class="flex-1 overflow-y-auto p-5 space-y-4">โหลด...</div>
+    </div>
+  </div>
+
+
+  <!-- ADJUST MODAL -->
+  <div id="adjustModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/50" onclick="closeAdjustModal()"></div>
+    <div class="absolute inset-x-4 top-20 max-w-md mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
+      <div class="px-5 py-3 border-b flex items-center justify-between bg-slate-50">
+        <div>
+          <div class="font-bold text-lg">🔧 ปรับปรุงสต๊อก</div>
+          <div id="adjProductInfo" class="text-xs text-slate-500">-</div>
+        </div>
+        <button onclick="closeAdjustModal()" class="text-slate-400 hover:text-slate-700 text-xl">✕</button>
+      </div>
+      <div class="p-5 space-y-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">🏢 คลัง *</label>
+          <select id="adjLocSel" class="w-full px-3 py-2 border-2 border-blue-300 rounded-lg text-sm bg-blue-50 font-semibold"></select>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">จำนวนปัจจุบัน</label>
+            <div id="adjCurrentQty" class="w-full px-3 py-2 bg-slate-100 rounded-lg text-sm font-bold text-slate-700">-</div>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">จำนวนใหม่ *</label>
+            <input id="adjNewQty" type="number" min="0" step="0.01" class="w-full px-3 py-2 border-2 border-green-300 rounded-lg text-sm font-bold bg-green-50">
+          </div>
+        </div>
+        <div id="adjDiff" class="text-center text-sm py-1"></div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">เหตุผล *</label>
+          <select id="adjReasonPreset" onchange="if(this.value){document.getElementById('adjReason').value=this.value}" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm mb-2">
+            <option value="">- เลือกเหตุผลสำเร็จรูป -</option>
+            <option value="นับสต๊อกประจำเดือน">นับสต๊อกประจำเดือน</option>
+            <option value="ของเสีย/ชำรุด">ของเสีย/ชำรุด</option>
+            <option value="ของหาย">ของหาย</option>
+            <option value="ของเกินจากนับ">ของเกินจากนับ</option>
+            <option value="ปรับปรุงตอนเริ่มต้น">ปรับปรุงตอนเริ่มต้น</option>
+            <option value="แก้ไขข้อผิดพลาด">แก้ไขข้อผิดพลาด</option>
+          </select>
+          <input id="adjReason" type="text" placeholder="ระบุเหตุผล..." class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm">
+        </div>
+      </div>
+      <div class="border-t px-5 py-3 bg-slate-50 flex justify-end gap-2">
+        <button onclick="closeAdjustModal()" class="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-sm">ยกเลิก</button>
+        <button id="adjSaveBtn" class="px-4 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-700 text-sm font-medium">บันทึก</button>
+      </div>
     </div>
   </div>
 
