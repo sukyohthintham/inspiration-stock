@@ -274,7 +274,7 @@
           '<button onclick="openEdit(' + p.id + ')" class="text-blue-600 text-sm hover:underline mr-2">แก้ไข</button>' +
           '<button onclick="openAdjustModal(' + p.id + ')" class="text-amber-600 text-sm hover:underline mr-2">🔧 ปรับ</button>' +
           (p.is_active
-            ? '<button onclick="deleteProduct(' + p.id + ", '" + (p.name || '').replace(/'/g, "\\'") + "'" + ')" class="text-red-600 text-sm hover:underline">🗑️ ลบ</button>'
+            ? '<button onclick="openDelModal(' + p.id + ')" class="text-red-600 text-sm hover:underline">🗑️ ลบ</button>'
             : '<button onclick="restoreProduct(' + p.id + ')" class="text-green-600 text-sm hover:underline">♻ คืน</button>') +
         '</td>' +
       '</tr>';
@@ -738,6 +738,68 @@
     });
   }, 500);
 
+
+  // ============ DELETE CHOICE ============
+  let _delProductId = null;
+
+  window.openDelModal = function(productId) {
+    const p = products.find(x => x.id === productId);
+    if (!p) return;
+    _delProductId = productId;
+    document.getElementById('delProductInfo').textContent = p.sku + ' · ' + p.name;
+    const stockMap = stocksByProduct[productId] || {};
+
+    const locOpts = locations.map(l => {
+      const qty = stockMap[l.code]?.qty ?? 0;
+      const hasStock = qty > 0;
+      const cls = hasStock ? 'border-amber-200 hover:border-amber-400 hover:bg-amber-50' : 'border-slate-200 opacity-50 cursor-not-allowed';
+      const dis = hasStock ? '' : 'disabled';
+      return '<button onclick="delChoice(' + l.id + ')" ' + dis + ' class="w-full p-4 border-2 ' + cls + ' rounded-xl text-left transition">' +
+        '<div class="font-bold text-amber-700">🏢 ลบเฉพาะคลัง ' + l.name + '</div>' +
+        '<div class="text-xs text-slate-600 mt-1">ตั้ง stock ของ ' + l.code + ' = 0 (ปัจจุบัน ' + qty + ') · สินค้ายังคงอยู่ในคลังอื่น</div>' +
+      '</button>';
+    }).join('');
+    document.getElementById('delLocOptions').innerHTML = locOpts;
+    document.getElementById('delModal').classList.remove('hidden');
+  };
+
+  window.closeDelModal = function() {
+    document.getElementById('delModal').classList.add('hidden');
+    _delProductId = null;
+  };
+
+  window.delChoice = async function(choice) {
+    const p = products.find(x => x.id === _delProductId);
+    if (!p) return;
+
+    if (choice === 'all') {
+      if (!confirmDialog('ปิดสินค้า "' + p.name + '" ทั้งระบบ?')) return;
+      const { error } = await supabase.from('products').update({ is_active: false, updated_at: new Date().toISOString() }).eq('id', _delProductId);
+      if (error) { toast('ผิดพลาด: ' + error.message, 'error'); return; }
+      toast('ปิดสินค้าเรียบร้อย', 'success');
+      closeDelModal();
+      await loadProducts();
+    } else {
+      const locId = Number(choice);
+      const loc = locations.find(l => l.id === locId);
+      if (!loc) return;
+      const stockMap = stocksByProduct[_delProductId] || {};
+      const curQty = stockMap[loc.code]?.qty ?? 0;
+      if (!confirmDialog('ลบสินค้า "' + p.name + '" จากคลัง ' + loc.name + '?\nstock จะเป็น 0 (ปัจจุบัน ' + curQty + ')')) return;
+      try {
+        const { error } = await supabase.rpc('adjust_stock', {
+          p_product_id: _delProductId, p_location_id: locId,
+          p_new_quantity: 0, p_user_id: me.id,
+          p_reason: 'ลบสินค้าจากคลัง ' + loc.code,
+        });
+        if (error) throw error;
+        toast('ลบจาก ' + loc.name + ' เรียบร้อย', 'success');
+        closeDelModal();
+        await loadProducts();
+      } catch (e) { toast('ผิดพลาด: ' + e.message, 'error'); }
+    }
+  };
+
 </script>
 
   <!-- IMAGE LIGHTBOX -->
@@ -806,6 +868,32 @@
       <div class="border-t px-5 py-3 bg-slate-50 flex justify-end gap-2">
         <button onclick="closeAdjustModal()" class="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-sm">ยกเลิก</button>
         <button id="adjSaveBtn" class="px-4 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-700 text-sm font-medium">บันทึก</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- DELETE CHOICE MODAL -->
+  <div id="delModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/50" onclick="closeDelModal()"></div>
+    <div class="absolute inset-x-4 top-20 max-w-md mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
+      <div class="px-5 py-3 border-b flex items-center justify-between bg-slate-50">
+        <div>
+          <div class="font-bold text-lg">🗑️ ลบสินค้า</div>
+          <div id="delProductInfo" class="text-xs text-slate-500">-</div>
+        </div>
+        <button onclick="closeDelModal()" class="text-slate-400 hover:text-slate-700 text-xl">✕</button>
+      </div>
+      <div class="p-5 space-y-3">
+        <p class="text-sm text-slate-600">เลือกประเภทการลบ:</p>
+        <button onclick="delChoice('all')" class="w-full p-4 border-2 border-red-200 hover:border-red-400 hover:bg-red-50 rounded-xl text-left transition">
+          <div class="font-bold text-red-700">🗑️ ปิดสินค้า (ทั้งระบบ)</div>
+          <div class="text-xs text-slate-600 mt-1">สินค้าหายจากทุก location · stock เดิมยังอยู่ในประวัติ · กดคืนได้ภายหลัง</div>
+        </button>
+        <div id="delLocOptions" class="space-y-2"></div>
+      </div>
+      <div class="border-t px-5 py-3 bg-slate-50 flex justify-end">
+        <button onclick="closeDelModal()" class="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-sm">ยกเลิก</button>
       </div>
     </div>
   </div>

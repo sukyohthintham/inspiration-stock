@@ -133,18 +133,19 @@
     }).join('');
   }
 
-  async function openDetail(reqId) {
+  async function openDetail(reqId, keepOverride) {
     const { data: req } = await supabase.from('requisitions')
       .select('*, profiles!requested_by(full_name, department, phone), locations(id, name, code)')
       .eq('id', reqId).single();
     if (!req) { toast('ไม่พบใบเบิก','error'); return; }
 
-    // ถ้าใบไม่มี location_id → ตั้งเป็น Warehouse default
-    if (!req.location_id) {
-      const wh = allowedLocations.find(l => l.code === 'WAREHOUSE') || allowedLocations[0];
-      currentLocationOverride = wh?.id || null;
-    } else {
-      currentLocationOverride = req.location_id;
+    if (!keepOverride) {
+      if (!req.location_id) {
+        const wh = allowedLocations.find(l => l.code === 'WAREHOUSE') || allowedLocations[0];
+        currentLocationOverride = wh?.id || null;
+      } else {
+        currentLocationOverride = req.location_id;
+      }
     }
 
     const { data: items } = await supabase.from('requisition_items')
@@ -249,7 +250,7 @@
 
   function changePopupLoc(reqId, newLocId) {
     currentLocationOverride = Number(newLocId);
-    openDetail(reqId);
+    openDetail(reqId, true);
   }
   window.changePopupLoc = changePopupLoc;
 
