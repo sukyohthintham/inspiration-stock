@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>โอนคลัง · Inspiration Stock</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style> body { font-family: 'Prompt', sans-serif; background: #f8fafc; } </style>
+</head>
+<body class="min-h-screen pb-10">
+  <main class="max-w-6xl mx-auto px-4 py-6">
+    <h1 class="text-2xl font-bold text-slate-900 mb-1">โอนระหว่างคลัง 🔄</h1>
+    <p class="text-sm text-slate-500 mb-6">โอนสินค้าระหว่างคลังที่คุณดูแล · ระบบหักจากต้นทาง + เพิ่มที่ปลายทางอัตโนมัติ · บันทึก movement ทั้ง 2 ฝั่ง</p>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <!-- Form -->
+      <div class="bg-white rounded-2xl p-5 shadow-sm lg:col-span-2">
+        <h3 class="font-semibold text-slate-900 mb-3">สร้างใบโอนใหม่</h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">🏢 จากคลัง (ต้นทาง) *</label>
+            <select id="fromSel" class="w-full px-3 py-2 border-2 border-amber-300 rounded-lg text-sm font-semibold bg-amber-50">
+              <option value="">- เลือก -</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">🏢 ไปคลัง (ปลายทาง) *</label>
+            <select id="toSel" class="w-full px-3 py-2 border-2 border-green-300 rounded-lg text-sm font-semibold bg-green-50">
+              <option value="">- เลือก -</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="needSelection" class="text-center text-slate-500 py-10 border border-dashed rounded-xl">
+          <div class="text-3xl mb-2">🏢 → 🏢</div>
+          <div class="text-sm">กรุณาเลือกคลังต้นทางและปลายทาง</div>
+        </div>
+
+        <div id="transferUI" class="hidden">
+          <div class="border border-dashed rounded-xl p-3 mb-3 bg-slate-50">
+            <div class="grid grid-cols-12 gap-2">
+              <div class="col-span-7 md:col-span-8">
+                <label class="block text-[10px] font-medium text-slate-600 mb-1">สินค้า (แสดงเฉพาะที่มี stock ในคลังต้นทาง)</label>
+                <select id="prodSel" class="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm">
+                  <option value="">- เลือกสินค้า -</option>
+                </select>
+              </div>
+              <div class="col-span-3 md:col-span-3">
+                <label class="block text-[10px] font-medium text-slate-600 mb-1">จำนวน</label>
+                <input id="qtyInput" type="number" min="0" step="0.01" placeholder="0" class="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm">
+              </div>
+              <div class="col-span-2 md:col-span-1 flex items-end">
+                <button id="addLineBtn" class="w-full px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">+</button>
+              </div>
+            </div>
+            <div id="prodInfo" class="text-xs text-slate-500 mt-2"></div>
+          </div>
+
+          <div class="border rounded-xl overflow-hidden mb-3">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 text-xs text-slate-600">
+                <tr>
+                  <th class="text-left p-2">สินค้า</th>
+                  <th class="text-center p-2 w-20">มี (ต้นทาง)</th>
+                  <th class="text-center p-2 w-20">โอน</th>
+                  <th class="text-center p-2 w-20">เหลือ</th>
+                  <th class="w-10"></th>
+                </tr>
+              </thead>
+              <tbody id="linesBody" class="divide-y"></tbody>
+              <tfoot class="bg-slate-50 font-semibold text-sm">
+                <tr><td class="text-right p-2" colspan="2">รวม</td>
+                <td class="text-center p-2" id="totalQty">0</td>
+                <td colspan="2"></td></tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <textarea id="trfNotes" placeholder="หมายเหตุ (ถ้ามี)..." rows="2" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm mb-3"></textarea>
+
+          <button id="saveTrfBtn" class="w-full bg-gradient-to-r from-purple-600 to-purple-700 text-white font-semibold py-3 rounded-xl shadow-lg disabled:opacity-50">
+            🔄 บันทึกการโอน
+          </button>
+        </div>
+      </div>
+
+      <!-- Recent Transfers -->
+      <div class="bg-white rounded-2xl p-5 shadow-sm">
+        <h3 class="font-semibold text-slate-900 mb-3">โอนล่าสุด</h3>
+        <div id="recentList" class="space-y-2 max-h-[600px] overflow-y-auto"></div>
+      </div>
+    </div>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/sidebar.js"></script>
+  <script>
+  let me = null;
+  let allProducts = [];
+  let manageLocations = [];
+  let allLocations = [];
+  let stocksAtFrom = {}; // product_id -> qty (สำหรับ from location)
+  let lines = [];
+
+  (async () => {
+    me = await setupAdminLayout('transfer');
+    if (!me) return;
+    await loadLocations();
+    await loadProducts();
+    await loadRecent();
+  })();
+
+  async function loadLocations() {
+    const { data: allLoc } = await supabase.from('locations').select('*').eq('is_active', true).order('display_order');
+    allLocations = allLoc || [];
+
+    // หา location ที่ user manage ได้
+    const { data: mappings } = await supabase.from('user_locations')
+      .select('location_id, can_manage').eq('user_id', me.id);
+
+    if (!mappings || mappings.length === 0) {
+      // ไม่มี mapping = Super (ทุก location)
+      manageLocations = allLocations;
+    } else {
+      const allowedIds = mappings.filter(m => m.can_manage).map(m => m.location_id);
+      manageLocations = allLocations.filter(l => allowedIds.includes(l.id));
+    }
+
+    if (manageLocations.length < 2) {
+      document.getElementById('needSelection').innerHTML =
+        '<div class="text-3xl mb-2">⚠</div>' +
+        '<div class="text-sm font-medium text-red-700">ต้องมีสิทธิจัดการ ≥ 2 คลังจึงจะโอนได้</div>' +
+        '<div class="text-xs text-slate-500 mt-1">ขณะนี้คุณมีสิทธิ ' + manageLocations.length + ' คลัง · ติดต่อ admin</div>';
+      return;
+    }
+
+    const opts = manageLocations.map(l => '<option value="' + l.id + '">🏢 ' + l.name + ' (' + l.code + ')</option>').join('');
+    document.getElementById('fromSel').innerHTML = '<option value="">- เลือก -</option>' + opts;
+    document.getElementById('toSel').innerHTML = '<option value="">- เลือก -</option>' + opts;
+  }
+
+  async function loadProducts() {
+    const { data } = await supabase.from('products').select('id, sku, name, unit, unit_cost').eq('is_active', true).order('name');
+    allProducts = data || [];
+  }
+
+  async function loadRecent() {
+    const { data } = await supabase.from('stock_movements')
+      .select('*, products(sku, name, unit), locations:location_id(name, code), to_loc:to_location_id(name, code), profiles:created_by(full_name)')
+      .eq('movement_type', 'TRANSFER_OUT')
+      .order('created_at', { ascending: false })
+      .limit(30);
+    const el = document.getElementById('recentList');
+    if (!data || data.length === 0) {
+      el.innerHTML = '<p class="text-sm text-slate-500 text-center py-4">ยังไม่มีการโอน</p>';
+      return;
+    }
+    el.innerHTML = data.map(m =>
+      '<div class="p-3 rounded-lg border border-slate-200 hover:bg-slate-50">' +
+        '<div class="flex justify-between items-start mb-1">' +
+          '<div class="font-mono text-xs font-semibold">' + (m.reference_no || '-') + '</div>' +
+          '<div class="text-[10px] text-slate-500">' + fmtDate(m.created_at) + '</div>' +
+        '</div>' +
+        '<div class="text-sm font-medium">' + (m.products?.name || '-') + '</div>' +
+        '<div class="text-[11px] text-slate-500">' + (m.products?.sku || '-') + '</div>' +
+        '<div class="text-xs mt-1 flex items-center gap-1 flex-wrap">' +
+          '<span class="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px]">🏢 ' + (m.locations?.name || '-') + '</span>' +
+          '<span class="text-slate-400">→</span>' +
+          '<span class="px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[10px]">🏢 ' + (m.to_loc?.name || '-') + '</span>' +
+          '<span class="text-purple-700 font-bold ml-auto">' + Math.abs(Number(m.quantity)) + ' ' + (m.products?.unit || '') + '</span>' +
+        '</div>' +
+        '<div class="text-[10px] text-slate-500 mt-1">โดย ' + (m.profiles?.full_name || '-') + '</div>' +
+      '</div>'
+    ).join('');
+  }
+
+  async function onLocationChange() {
+    const fromId = Number(document.getElementById('fromSel').value);
+    const toId = Number(document.getElementById('toSel').value);
+
+    if (!fromId || !toId) {
+      document.getElementById('needSelection').classList.remove('hidden');
+      document.getElementById('transferUI').classList.add('hidden');
+      return;
+    }
+    if (fromId === toId) {
+      toast('คลังต้นทางและปลายทางต้องไม่ใช่ที่เดียวกัน', 'warning');
+      document.getElementById('toSel').value = '';
+      return;
+    }
+
+    // โหลด stock ของ from location
+    const { data: stocks } = await supabase.from('product_stocks')
+      .select('product_id, current_stock, products(id, sku, name, unit)')
+      .eq('location_id', fromId)
+      .gt('current_stock', 0);
+
+    stocksAtFrom = {};
+    (stocks || []).forEach(s => {
+      stocksAtFrom[s.product_id] = {
+        qty: Number(s.current_stock),
+        name: s.products?.name,
+        sku: s.products?.sku,
+        unit: s.products?.unit,
+      };
+    });
+
+    // populate product dropdown
+    const opts = Object.entries(stocksAtFrom).map(([pid, info]) =>
+      '<option value="' + pid + '">' + info.sku + ' · ' + info.name + ' (มี ' + info.qty + ' ' + info.unit + ')</option>'
+    ).join('');
+    document.getElementById('prodSel').innerHTML = '<option value="">- เลือกสินค้า -</option>' + opts;
+
+    document.getElementById('needSelection').classList.add('hidden');
+    document.getElementById('transferUI').classList.remove('hidden');
+    lines = [];
+    renderLines();
+  }
+
+  document.getElementById('fromSel').addEventListener('change', onLocationChange);
+  document.getElementById('toSel').addEventListener('change', onLocationChange);
+
+  document.getElementById('prodSel').addEventListener('change', (e) => {
+    const pid = Number(e.target.value);
+    const info = stocksAtFrom[pid];
+    if (info) {
+      document.getElementById('prodInfo').textContent = 'มีในคลังต้นทาง: ' + info.qty + ' ' + info.unit;
+    } else {
+      document.getElementById('prodInfo').textContent = '';
+    }
+  });
+
+  document.getElementById('addLineBtn').addEventListener('click', () => {
+    const pid = Number(document.getElementById('prodSel').value);
+    const qty = Number(document.getElementById('qtyInput').value);
+    if (!pid || qty <= 0) { toast('ระบุสินค้าและจำนวน', 'warning'); return; }
+    const info = stocksAtFrom[pid];
+    if (!info) return;
+
+    // เช็คว่า + ของที่อยู่ในตะกร้าแล้วเกิน stock ไหม
+    const existingInCart = lines.find(l => l.product_id === pid)?.qty || 0;
+    if (existingInCart + qty > info.qty) {
+      toast('เกินจำนวนที่มี (มี ' + info.qty + ' · เพิ่มได้อีก ' + (info.qty - existingInCart) + ')', 'warning');
+      return;
+    }
+
+    const ex = lines.find(l => l.product_id === pid);
+    if (ex) ex.qty += qty;
+    else lines.push({ product_id: pid, ...info, transferQty: qty, qty });
+
+    document.getElementById('prodSel').value = '';
+    document.getElementById('qtyInput').value = '';
+    document.getElementById('prodInfo').textContent = '';
+    renderLines();
+  });
+
+  function renderLines() {
+    const tb = document.getElementById('linesBody');
+    if (lines.length === 0) {
+      tb.innerHTML = '<tr><td colspan="5" class="text-center text-slate-400 p-4">ยังไม่มีรายการ</td></tr>';
+      document.getElementById('totalQty').textContent = '0';
+      document.getElementById('saveTrfBtn').disabled = true;
+      return;
+    }
+    let totalQty = 0;
+    tb.innerHTML = lines.map((l, idx) => {
+      totalQty += l.qty;
+      const remaining = stocksAtFrom[l.product_id].qty - l.qty;
+      return '<tr>' +
+        '<td class="p-2"><div class="font-medium text-sm">' + l.name + '</div><div class="text-[11px] text-slate-500">' + l.sku + ' · ' + l.unit + '</div></td>' +
+        '<td class="text-center p-2 text-slate-600">' + stocksAtFrom[l.product_id].qty + '</td>' +
+        '<td class="text-center p-2 font-bold text-purple-700">' + l.qty + '</td>' +
+        '<td class="text-center p-2 ' + (remaining === 0 ? 'text-red-600 font-bold' : 'text-slate-600') + '">' + remaining + '</td>' +
+        '<td class="p-2"><button onclick="removeLine(' + idx + ')" class="text-red-500 hover:text-red-700 text-sm">✕</button></td>' +
+      '</tr>';
+    }).join('');
+    document.getElementById('totalQty').textContent = totalQty;
+    document.getElementById('saveTrfBtn').disabled = false;
+  }
+  function removeLine(idx) { lines.splice(idx, 1); renderLines(); }
+  window.removeLine = removeLine;
+
+  document.getElementById('saveTrfBtn').addEventListener('click', async () => {
+    const fromId = Number(document.getElementById('fromSel').value);
+    const toId = Number(document.getElementById('toSel').value);
+    if (!fromId || !toId) { toast('เลือกคลังให้ครบ', 'warning'); return; }
+    if (lines.length === 0) { toast('ยังไม่มีรายการ', 'warning'); return; }
+    const fromName = manageLocations.find(l => l.id === fromId)?.name || '';
+    const toName = manageLocations.find(l => l.id === toId)?.name || '';
+    if (!confirmDialog('ยืนยันโอน ' + lines.length + ' รายการ จาก "' + fromName + '" → "' + toName + '"?')) return;
+
+    const btn = document.getElementById('saveTrfBtn');
+    btn.disabled = true; btn.textContent = 'กำลังโอน...';
+    const refNo = 'TRF-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(Math.random() * 9999).toString().padStart(4, '0');
+    try {
+      for (const l of lines) {
+        const { error } = await supabase.rpc('transfer_stock', {
+          p_product_id: l.product_id, p_quantity: l.qty,
+          p_from_location: fromId, p_to_location: toId,
+          p_user_id: me.id, p_reference_no: refNo,
+          p_notes: 'โอนระหว่างคลัง',
+        });
+        if (error) throw error;
+      }
+      toast('โอนเรียบร้อย ' + refNo + ' · ' + lines.length + ' รายการ', 'success');
+      lines = []; renderLines();
+      await loadRecent();
+      await onLocationChange(); // reload stock
+    } catch (e) {
+      console.error(e);
+      toast('ผิดพลาด: ' + (e.message || ''), 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = '🔄 บันทึกการโอน';
+    }
+  });
+
+  renderLines();
+  </script>
+</body>
+</html>
