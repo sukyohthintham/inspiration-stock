@@ -183,8 +183,11 @@
           '</div>' +
         '</td>' +
         '<td class="p-3 text-center">' +
-          '<button onclick="toggleActive(\'' + u.id + '\', ' + (!u.is_active) + ')" ' + (isMe ? 'disabled' : '') + ' class="text-xs px-3 py-1 rounded-full font-medium ' + (u.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700') + '">' +
-            (u.is_active ? '● ใช้งาน' : '○ ปิด') + '</button>' +
+          '<div class="flex items-center justify-center gap-1">' +
+            '<button onclick="toggleActive(\'' + u.id + '\', ' + (!u.is_active) + ')" ' + (isMe ? 'disabled' : '') + ' class="text-xs px-3 py-1 rounded-full font-medium ' + (u.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700') + '">' +
+              (u.is_active ? '● ใช้งาน' : '○ ปิด') + '</button>' +
+            (!isMe ? '<button onclick="deleteUser(\'' + u.id + '\', \'' + (u.full_name||'').replace(/\x27/g,"\\\x27") + '\')" class="text-xs px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100" title="ลบ user ถาวร">🗑️</button>' : '') +
+          '</div>' +
         '</td>' +
         '<td class="p-3 text-xs text-slate-500">' + fmtDateOnly(u.created_at) + '</td>' +
       '</tr>';
@@ -278,6 +281,25 @@
     } catch (e) { toast('ผิดพลาด: ' + e.message, 'error'); }
     finally { btn.disabled = false; btn.textContent = 'บันทึก'; }
   });
+
+  async function deleteUser(userId, name) {
+    const safeName = name || 'ไม่ระบุชื่อ';
+    const confirmText = 'ลบ user ถาวร: ' + safeName + '\n\n⚠ ลบได้เฉพาะ user ที่ไม่มีประวัติในระบบเลย\n(ถ้ามีใบเบิก/รับเข้า → ใช้ปุ่มปิดใช้งานแทน)\n\nพิมพ์ DELETE เพื่อยืนยัน:';
+    const typed = prompt(confirmText);
+    if (typed !== 'DELETE') {
+      if (typed !== null) toast('ยกเลิก - พิมพ์ไม่ตรง', 'warning');
+      return;
+    }
+    const { data, error } = await supabase.rpc('delete_user_profile', { p_user_id: userId });
+    if (error) { toast('ผิดพลาด: ' + error.message, 'error'); return; }
+    if (data && data.success === false) {
+      alert('❌ ลบไม่ได้:\n\n' + (data.message || 'มีประวัติในระบบ'));
+      return;
+    }
+    toast(data?.message || 'ลบเรียบร้อย', 'success');
+    await loadUsers();
+  }
+  window.deleteUser = deleteUser;
 
   ['searchInput','roleFilter'].forEach(id =>
     document.getElementById(id).addEventListener(id === 'searchInput' ? 'input' : 'change', renderTable));

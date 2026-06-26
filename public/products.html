@@ -751,12 +751,10 @@
 
     const locOpts = locations.map(l => {
       const qty = stockMap[l.code]?.qty ?? 0;
-      const hasStock = qty > 0;
-      const cls = hasStock ? 'border-amber-200 hover:border-amber-400 hover:bg-amber-50' : 'border-slate-200 opacity-50 cursor-not-allowed';
-      const dis = hasStock ? '' : 'disabled';
-      return '<button onclick="delChoice(' + l.id + ')" ' + dis + ' class="w-full p-4 border-2 ' + cls + ' rounded-xl text-left transition">' +
+      const action = qty > 0 ? 'ตั้ง stock = 0 (ปัจจุบัน ' + qty + ')' : 'เอาออกจากตารางคลังนี้';
+      return '<button onclick="delChoice(' + l.id + ')" class="w-full p-4 border-2 border-amber-200 hover:border-amber-400 hover:bg-amber-50 rounded-xl text-left transition">' +
         '<div class="font-bold text-amber-700">🏢 ลบเฉพาะคลัง ' + l.name + '</div>' +
-        '<div class="text-xs text-slate-600 mt-1">ตั้ง stock ของ ' + l.code + ' = 0 (ปัจจุบัน ' + qty + ') · สินค้ายังคงอยู่ในคลังอื่น</div>' +
+        '<div class="text-xs text-slate-600 mt-1">' + action + ' · สินค้ายังคงอยู่ในคลังอื่น</div>' +
       '</button>';
     }).join('');
     document.getElementById('delLocOptions').innerHTML = locOpts;
@@ -785,14 +783,25 @@
       if (!loc) return;
       const stockMap = stocksByProduct[_delProductId] || {};
       const curQty = stockMap[loc.code]?.qty ?? 0;
-      if (!confirmDialog('ลบสินค้า "' + p.name + '" จากคลัง ' + loc.name + '?\nstock จะเป็น 0 (ปัจจุบัน ' + curQty + ')')) return;
+      const msg = curQty > 0
+        ? 'ลบสินค้า "' + p.name + '" จากคลัง ' + loc.name + '?\nstock จะถูกตั้งเป็น 0 (ปัจจุบัน ' + curQty + ')'
+        : 'เอา "' + p.name + '" ออกจากตารางคลัง ' + loc.name + '?\n(stock = 0 อยู่แล้ว)';
+      if (!confirmDialog(msg)) return;
       try {
-        const { error } = await supabase.rpc('adjust_stock', {
-          p_product_id: _delProductId, p_location_id: locId,
-          p_new_quantity: 0, p_user_id: me.id,
-          p_reason: 'ลบสินค้าจากคลัง ' + loc.code,
-        });
-        if (error) throw error;
+        if (curQty > 0) {
+          const { error } = await supabase.rpc('adjust_stock', {
+            p_product_id: _delProductId, p_location_id: locId,
+            p_new_quantity: 0, p_user_id: me.id,
+            p_reason: 'ลบสินค้าจากคลัง ' + loc.code,
+          });
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from('product_stocks')
+            .delete()
+            .eq('product_id', _delProductId)
+            .eq('location_id', locId);
+          if (error) throw error;
+        }
         toast('ลบจาก ' + loc.name + ' เรียบร้อย', 'success');
         closeDelModal();
         await loadProducts();
